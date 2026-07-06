@@ -3,6 +3,59 @@
 Scope, ordering, and dependencies as defined in `PLAN.md`. Implementation on
 any task only begins when explicitly requested by ID or name.
 
+## Byte-size unit formatting (user-requested)
+
+- `ByteFormat.Bytes` used to step up a unit as soon as the value hit 1024
+  (e.g. 1200 bytes → "1.2 KB") — technically correct but leaves a lot of
+  values as an awkward near-1.0 fraction of the next unit. Changed the
+  step-up threshold to 10× the next unit (10240, not 1024): a value only
+  moves to the next unit once it would read as ten or more of it, so e.g.
+  9000 bytes stays "9000 B" but 38690 bytes becomes "37.8 KB". Made
+  `ByteFormat` public (was `internal`) so it's directly testable.
+- Tests: `ByteFormatTests` (below/at/above the threshold, multi-unit
+  step-up, top-unit ceiling, `Rate`'s `/s` suffix).
+
+## Configurable global download/upload speed limits (user-requested)
+
+- New `IRateLimiter` (`TokenBucketRateLimiter`) — a classic token bucket,
+  bytes refill continuously up to a one-second burst cap. Reads its limit
+  from a `Func<long>` on every call rather than capturing it once, so a
+  live Settings-dialog change takes effect immediately without rebuilding
+  anything. Zero or less means unlimited. The bucket lazily starts full
+  (not empty) so a freshly started/idle limiter can serve an immediate
+  burst instead of stalling the very first request.
+- `IClientSettings` gained `GlobalDownloadLimitBytesPerSecond` /
+  `GlobalUploadLimitBytesPerSecond` (default 0 = unlimited), persisted by
+  `JsonClientSettingsStore`. Unlike the other numeric settings, 0 here is a
+  meaningful value ("unlimited"), not a "use the default instead" sentinel
+  — load logic only clamps genuinely invalid negatives, it doesn't
+  substitute a non-zero default the way `GlobalMaxConnections` etc. do.
+- `NetworkedSessionManager` constructs exactly one download and one upload
+  `TokenBucketRateLimiter` (backed by the shared `IClientSettings`
+  instance) and passes both to every `PeerConnectionManager` it creates —
+  the limit is a true global cap across all torrents, not per-torrent.
+- `PeerConnectionManager` enforces the caps at two points:
+  - **Download**: before calling `TryGetNextRequest`, not after — that
+    call marks whatever block it returns as requested, so checking the
+    limiter afterward and declining would strand that block (never
+    re-offered, silent stall). Budget is checked against
+    `TypicalBlockSize` (16 KiB, the standard BEP-3 block size) since the
+    real length isn't known until after the call.
+  - **Upload**: in the `Request` handler, before reading/serving the
+    block. Safe to check after the fact here (no persistent state) — over
+    budget just drops the request; the peer will re-request or move on.
+- Settings dialog: `DOWNLOAD LIMIT (KB/S, 0 = UNLIMITED)` /
+  `UPLOAD LIMIT (KB/S, 0 = UNLIMITED)` fields, stored as KB/s in the UI and
+  converted to/from bytes/second when loading/saving.
+- Tests: `TokenBucketRateLimiterTests` (unit-level: unlimited, budget
+  enforcement, refill over time, live limit changes);
+  `PeerConnectionManagerIntegrationTests.PeerConnectionManager_DownloadLimiter_PacesRequests`
+  (real loopback TCP transfer, proves throttling actually slows a
+  multi-block download, not just the limiter in isolation);
+  `ClientSettingsTests`/`JsonClientSettingsStoreTests` (defaults, 0
+  round-trips as 0); `SettingsViewModelTests` (KB/s ⇄ bytes/sec
+  conversion, negative-value validation).
+
 ## Auto-resume, tracker back-off, and metadata retry (user-requested)
 
 - **Auto-resume on restart**: `NetworkedSessionManager.InitializeAsync` now
