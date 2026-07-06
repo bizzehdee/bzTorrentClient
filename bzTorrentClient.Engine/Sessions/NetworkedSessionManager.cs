@@ -18,12 +18,21 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
 {
     private static readonly TimeSpan DefaultMetadataFetchTimeout = TimeSpan.FromSeconds(90);
 
+    /// <summary>
+    /// One fetch attempt only covers whatever peers the swarm happened to hand the
+    /// PeerSource by the time it ran — if it fails, retrying later against a swarm that's
+    /// kept growing (via ongoing tracker re-announces, DHT, and PEX) is far more likely to
+    /// eventually find a peer that actually has the full metadata.
+    /// </summary>
+    private static readonly TimeSpan DefaultMetadataRetryDelay = TimeSpan.FromSeconds(30);
+
     private readonly ISessionManager _inner;
     private readonly IClientSettings _settings;
     private readonly string _localPeerId;
     private readonly Func<TorrentSession, int, IPeerSource> _peerSourceFactory;
     private readonly Func<TorrentSession, ITorrentStorage, IPieceManager, IPeerConnectionManager> _connectionManagerFactory;
     private readonly TimeSpan _metadataFetchTimeout;
+    private readonly TimeSpan _metadataRetryDelay;
 
     private readonly Dictionary<Guid, TorrentRuntime> _runtimes = new();
     private readonly object _runtimesLock = new();
@@ -34,7 +43,8 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         string localPeerId,
         Func<TorrentSession, int, IPeerSource>? peerSourceFactory = null,
         Func<TorrentSession, ITorrentStorage, IPieceManager, IPeerConnectionManager>? connectionManagerFactory = null,
-        TimeSpan? metadataFetchTimeout = null)
+        TimeSpan? metadataFetchTimeout = null,
+        TimeSpan? metadataRetryDelay = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -42,13 +52,33 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         _peerSourceFactory = peerSourceFactory ?? DefaultPeerSourceFactory;
         _connectionManagerFactory = connectionManagerFactory ?? DefaultConnectionManagerFactory;
         _metadataFetchTimeout = metadataFetchTimeout ?? DefaultMetadataFetchTimeout;
+        _metadataRetryDelay = metadataRetryDelay ?? DefaultMetadataRetryDelay;
     }
 
     public IReadOnlyCollection<TorrentSession> Sessions => _inner.Sessions;
     public int GlobalConnectionBudget => _inner.GlobalConnectionBudget;
     public int ReservedConnections => _inner.ReservedConnections;
 
-    public Task InitializeAsync(CancellationToken cancellationToken = default) => _inner.InitializeAsync(cancellationToken);
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        await _inner.InitializeAsync(cancellationToken);
+
+        // A torrent left Active when the app last closed should resume without the user
+        // having to click Start again — otherwise every restart silently halts transfers.
+        // One session failing to resume (bad tracker, disk error, ...) must not stop the
+        // rest from starting.
+        foreach (var session in _inner.Sessions.Where(s => s.State == TorrentState.Active).ToList())
+        {
+            try
+            {
+                await StartAsync(session.Id, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                session.Fail(ex.Message);
+            }
+        }
+    }
 
     public async Task<TorrentSession> AddAsync(TorrentAddSource source, string? downloadDirectory, bool startImmediately, CancellationToken cancellationToken = default)
     {
@@ -93,41 +123,60 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     private async Task RunDeferredMetadataFetchAsync(TorrentSession session, TorrentRuntime runtime, Metadata concreteMetadata, CancellationToken cancellationToken)
     {
         var fetched = false;
-        try
+        var stubConnectionManagerStarted = false;
+
+        while (!fetched)
         {
-            fetched = await MetadataFetcher.TryFetchAsync(concreteMetadata, runtime.PeerSource, _localPeerId, _metadataFetchTimeout, cancellationToken);
-        }
-        catch (Exception)
-        {
-            // Best-effort background fetch — a failure here has no caller to observe
-            // it; the torrent just stays a metadata-less stub until retried.
+            try
+            {
+                fetched = await MetadataFetcher.TryFetchAsync(concreteMetadata, runtime.PeerSource, _localPeerId, _metadataFetchTimeout, cancellationToken);
+            }
+            catch (Exception)
+            {
+                // Best-effort background fetch — a failure here has no caller to observe it.
+            }
+
+            lock (_runtimesLock)
+            {
+                // The torrent may have been stopped/removed while the fetch was running —
+                // don't keep retrying (or resurrect) a runtime nobody's using any more.
+                if (!_runtimes.TryGetValue(session.Id, out var currentRuntime) || currentRuntime != runtime)
+                    return;
+            }
+
+            if (fetched)
+                break;
+
+            if (!stubConnectionManagerStarted)
+            {
+                // Let peers keep connecting (and exchanging PEX) between attempts, instead
+                // of leaving the swarm frozen at whatever the first attempt saw — this is
+                // exactly how a torrent ends up with dozens of connected peers but no
+                // metadata forever without a retry loop.
+                runtime.ConnectionManager.Start();
+                stubConnectionManagerStarted = true;
+            }
+
+            if (!await AsyncUtil.TryDelay(_metadataRetryDelay, cancellationToken))
+                return;
         }
 
         try
         {
             lock (_runtimesLock)
             {
-                // The torrent may have been stopped/removed while the fetch was running —
-                // don't resurrect a runtime nobody's using any more.
                 if (!_runtimes.TryGetValue(session.Id, out var currentRuntime) || currentRuntime != runtime)
                     return;
 
-                if (fetched)
-                {
-                    session.OnMetadataPopulated();
-                    runtime.Storage.EnsureAllocated();
-                    BuildPieceAndConnectionManagers(session, runtime);
-                }
-
+                session.OnMetadataPopulated();
+                runtime.Storage.EnsureAllocated();
+                BuildPieceAndConnectionManagers(session, runtime);
                 runtime.ConnectionManager.Start();
             }
 
-            if (fetched)
-            {
-                using var stream = new MemoryStream();
-                concreteMetadata.Save(stream);
-                session.PromoteSourceToTorrentFile(stream.ToArray());
-            }
+            using var stream = new MemoryStream();
+            concreteMetadata.Save(stream);
+            session.PromoteSourceToTorrentFile(stream.ToArray());
         }
         catch (Exception)
         {
@@ -239,7 +288,15 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         var connectionManager = _connectionManagerFactory(session, runtime.Storage, pieceManager);
 
         if (runtime.ConnectionManager is not null)
+        {
             runtime.PeerSource.PeerFound -= runtime.ConnectionManager.AddPeerCandidate;
+
+            // A magnet torrent's first connection manager may already be running against
+            // the 0-piece stub (started while metadata kept retrying in the background) —
+            // dispose it so its dispatch loop and any live connections don't leak once
+            // replaced. No-op if it was never started.
+            runtime.ConnectionManager.Dispose();
+        }
 
         // The piece manager clones session.PieceCompletion at construction and tracks
         // completion internally from then on — without this, a piece finishing and

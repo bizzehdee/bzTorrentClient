@@ -21,9 +21,11 @@ public class NetworkedSessionManagerTests : IDisposable
     }
 
     private (NetworkedSessionManager manager, Dictionary<Guid, FakePeerSource> peerSources, Dictionary<Guid, FakePeerConnectionManager> connectionManagers, Dictionary<Guid, IPieceManager> pieceManagers)
-        CreateManager()
+        CreateManager() => CreateManager(new InMemorySessionStore());
+
+    private (NetworkedSessionManager manager, Dictionary<Guid, FakePeerSource> peerSources, Dictionary<Guid, FakePeerConnectionManager> connectionManagers, Dictionary<Guid, IPieceManager> pieceManagers)
+        CreateManager(InMemorySessionStore store, Guid? failingSessionId = null, TimeSpan? metadataRetryDelay = null)
     {
-        var store = new InMemorySessionStore();
         var settings = new ClientSettings(_tempDir);
         var inner = new SessionManager(store, settings);
 
@@ -37,6 +39,9 @@ public class NetworkedSessionManagerTests : IDisposable
             "-bz0001-000000000000",
             peerSourceFactory: (session, _) =>
             {
+                if (session.Id == failingSessionId)
+                    throw new InvalidOperationException("Simulated failure to resume this session.");
+
                 var fake = new FakePeerSource();
                 peerSources[session.Id] = fake;
                 return fake;
@@ -48,7 +53,8 @@ public class NetworkedSessionManagerTests : IDisposable
                 pieceManagers[session.Id] = pieceManager;
                 return fake;
             },
-            metadataFetchTimeout: TimeSpan.FromMilliseconds(100));
+            metadataFetchTimeout: TimeSpan.FromMilliseconds(100),
+            metadataRetryDelay: metadataRetryDelay ?? TimeSpan.FromMilliseconds(100));
 
         return (manager, peerSources, connectionManagers, pieceManagers);
     }
@@ -88,6 +94,12 @@ public class NetworkedSessionManagerTests : IDisposable
         // and the session is left with its 0-piece stub metadata.
         Assert.Empty(session.Metadata.PieceHashes);
         Assert.True(connectionManagers[session.Id].Started);
+
+        // The fetch retries forever until it succeeds or the torrent is stopped/removed —
+        // dispose so this test doesn't leave a background retry loop running past its own
+        // lifetime (Dispose tears down the runtime, which the loop checks for on its next
+        // iteration and returns instead of retrying again).
+        manager.Dispose();
     }
 
     [Fact]
@@ -254,5 +266,77 @@ public class NetworkedSessionManagerTests : IDisposable
         Assert.Equal(0, completed);
         Assert.True(session.PieceCompletion[0]);
         Assert.Equal(1.0, session.ProgressFraction);
+    }
+
+    [Fact]
+    public async Task InitializeAsync_ResumesSessionsThatWereActiveOnLastShutdown()
+    {
+        // Regression test: a torrent left Active when the app last closed used to stay
+        // inert until the user clicked Start again — InitializeAsync only loaded session
+        // records into memory, it never restarted their networking.
+        var store = new InMemorySessionStore();
+
+        var (firstRunManager, _, firstRunConnectionManagers, _) = CreateManager(store);
+        var activeSession = await firstRunManager.AddAsync(RealTorrentFileSource(), null, startImmediately: true);
+        var pausedSession = await firstRunManager.AddAsync(MagnetOnlySource("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), null, startImmediately: false);
+        Assert.Equal(TorrentState.Active, activeSession.State);
+        Assert.Equal(TorrentState.Paused, pausedSession.State);
+
+        // Simulate an app restart: a fresh manager over the same persisted store.
+        var (secondRunManager, _, secondRunConnectionManagers, _) = CreateManager(store);
+        await secondRunManager.InitializeAsync();
+
+        Assert.True(secondRunConnectionManagers[activeSession.Id].Started);
+        Assert.False(secondRunConnectionManagers.ContainsKey(pausedSession.Id));
+    }
+
+    [Fact]
+    public async Task InitializeAsync_OneSessionFailingToResume_StillResumesTheOthers()
+    {
+        var store = new InMemorySessionStore();
+
+        var (firstRunManager, _, _, _) = CreateManager(store);
+        var goodSession = await firstRunManager.AddAsync(RealTorrentFileSource(), null, startImmediately: true);
+        var badSession = await firstRunManager.AddAsync(MagnetOnlySource("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"), null, startImmediately: true);
+
+        var (secondRunManager, _, secondRunConnectionManagers, _) = CreateManager(
+            store,
+            failingSessionId: badSession.Id);
+        await secondRunManager.InitializeAsync();
+
+        Assert.True(secondRunConnectionManagers[goodSession.Id].Started);
+        Assert.Equal(TorrentState.Error, secondRunManager.Sessions.Single(s => s.Id == badSession.Id).State);
+
+        // firstRunManager's magnet session never found metadata, so it's still retrying
+        // in the background — dispose so it doesn't outlive this test.
+        firstRunManager.Dispose();
+    }
+
+    [Fact]
+    public async Task RunDeferredMetadataFetchAsync_KeepsRetryingAfterAFailedAttempt()
+    {
+        // Regression test: a magnet torrent's metadata fetch used to run exactly once —
+        // if it failed (e.g. too few peers known that early), the torrent was stuck
+        // showing "(fetching metadata…)" forever, even as the swarm kept growing via
+        // ongoing tracker/DHT/PEX activity in the background. It must keep retrying.
+        var (manager, peerSources, connectionManagers, _) = CreateManager(
+            new InMemorySessionStore(),
+            metadataRetryDelay: TimeSpan.FromMilliseconds(50));
+        var session = await manager.AddAsync(MagnetOnlySource(), null, false);
+
+        await manager.StartAsync(session.Id);
+
+        // Each attempt subscribes to PeerFound exactly once; wait for at least a second
+        // attempt to start, proving the loop didn't stop after the first failure. Also
+        // wait for the stub connection manager to start (between-attempts, once the first
+        // one fails) so the swarm can keep growing while later attempts try their luck.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while ((peerSources[session.Id].SubscribeCount < 2 || !connectionManagers[session.Id].Started) && DateTime.UtcNow < deadline)
+            await Task.Delay(TimeSpan.FromMilliseconds(20));
+
+        Assert.True(peerSources[session.Id].SubscribeCount >= 2);
+        Assert.True(connectionManagers[session.Id].Started);
+
+        manager.Dispose();
     }
 }

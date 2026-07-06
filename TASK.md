@@ -3,6 +3,55 @@
 Scope, ordering, and dependencies as defined in `PLAN.md`. Implementation on
 any task only begins when explicitly requested by ID or name.
 
+## Auto-resume, tracker back-off, and metadata retry (user-requested)
+
+- **Auto-resume on restart**: `NetworkedSessionManager.InitializeAsync` now
+  resumes every persisted session whose `State == Active` by calling
+  `StartAsync` on it after loading — previously `InitializeAsync` only
+  loaded session records into memory, so an Active torrent sat inert until
+  the user clicked Start again. One session failing to resume (bad tracker,
+  disk error, ...) is caught and turns that session into `Error` rather
+  than blocking the rest from starting.
+- **Tracker back-off (3 failures) and periodic re-announce**: already fully
+  implemented in `AggregatingPeerSource.PollTrackerAsync` —
+  `MaxConsecutiveTrackerFailures = 3` gives up on a tracker after 3
+  consecutive failed announces, and a successful announce schedules the
+  next one after `max(tracker's WaitTime, 30s)`, resetting the failure
+  counter. No changes needed; verified by reading the existing code.
+- **Magnet metadata fetch was one-shot**: investigated as part of a
+  follow-up report ("peers connect but no metadata/file list ever
+  appears") — `NetworkedSessionManager` tried BEP-9 metadata fetch exactly
+  once per Start; if it failed (too few peers known that early), the
+  torrent was stuck at "(fetching metadata…)" forever even as its peer
+  count kept climbing from ongoing tracker/DHT/PEX activity. Fixed by
+  turning `RunDeferredMetadataFetchAsync` into a retry loop
+  (`_metadataRetryDelay`, default 30s) that keeps trying until it succeeds
+  or the torrent is stopped/removed. The stub (0-piece) connection manager
+  now starts after the *first* failed attempt (not never), so peers keep
+  connecting/exchanging PEX between retries instead of the swarm staying
+  frozen. `BuildPieceAndConnectionManagers` now disposes the previous
+  connection manager before replacing it, since it may genuinely be
+  running (with live connections) by the time a later retry succeeds —
+  previously this was safe only because the stub was never started before
+  being replaced.
+  - **Known follow-up, not yet fixed**: peer candidates already delivered
+    to the stub connection manager aren't replayed to the rebuilt one
+    after a successful late fetch (`AggregatingPeerSource` dedupes
+    `PeerFound` at the source, so a new subscriber never sees
+    already-reported endpoints) — piece downloading has to wait for fresh
+    peer discoveries rather than immediately using the 50+ peers already
+    known. Not fixed this pass; flagged for a later task.
+  - **Also noticed, not yet fixed**: `PeerConnectionManager` never
+    registers `UTMetadata` as a servable extension, and
+    `ExtendedProtocolExtensions.OnHandshake` never advertises
+    `metadata_size` — so this client can never *serve* metadata to other
+    peers once it has it, even though it can now reliably *fetch* it. Only
+    matters for helping other magnet-only leechers in the swarm; doesn't
+    affect this client's own downloads.
+- Tests: `NetworkedSessionManagerTests.InitializeAsync_ResumesSessionsThatWereActiveOnLastShutdown`,
+  `InitializeAsync_OneSessionFailingToResume_StillResumesTheOthers`,
+  `RunDeferredMetadataFetchAsync_KeepsRetryingAfterAFailedAttempt`.
+
 ## Peers connect but nothing downloads/no metadata shown (user-reported)
 
 - Root cause: `RarestFirstPieceManager` clones `session.PieceCompletion` at

@@ -5,7 +5,16 @@ namespace bzTorrentClient.Engine.Tests.Networking;
 
 internal sealed class FakePeerSource : IPeerSource
 {
-    public event Action<IPEndPoint>? PeerFound;
+    private Action<IPEndPoint>? _peerFound;
+
+    /// <summary>How many times something has subscribed to <see cref="PeerFound"/> — each call to MetadataFetcher.TryFetchAsync subscribes exactly once, so this doubles as an attempt counter.</summary>
+    public int SubscribeCount { get; private set; }
+
+    public event Action<IPEndPoint>? PeerFound
+    {
+        add { _peerFound += value; SubscribeCount++; }
+        remove => _peerFound -= value;
+    }
 
     public bool Started { get; private set; }
     public bool Stopped { get; private set; }
@@ -20,5 +29,5 @@ internal sealed class FakePeerSource : IPeerSource
     public void Stop() => Stopped = true;
     public void Dispose() => Disposed = true;
 
-    public void Raise(IPEndPoint endpoint) => PeerFound?.Invoke(endpoint);
+    public void Raise(IPEndPoint endpoint) => _peerFound?.Invoke(endpoint);
 }
