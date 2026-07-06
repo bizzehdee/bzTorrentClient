@@ -27,4 +27,12 @@ public class ClientSettingsTests
         Assert.True(settings.GlobalMaxConnections > 0);
         Assert.True(settings.MaxConnectionsPerTorrent > 0);
     }
+
+    [Fact]
+    public void Defaults_SpeedLimitsAreUnlimited()
+    {
+        var settings = new ClientSettings();
+        Assert.Equal(0, settings.GlobalDownloadLimitBytesPerSecond);
+        Assert.Equal(0, settings.GlobalUploadLimitBytesPerSecond);
+    }
 }

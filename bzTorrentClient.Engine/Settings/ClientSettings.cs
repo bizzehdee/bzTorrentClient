@@ -6,6 +6,8 @@ public sealed class ClientSettings : IClientSettings
     public int GlobalMaxConnections { get; set; } = 200;
     public int MaxConnectionsPerTorrent { get; set; } = 50;
     public int ListenPort { get; set; } = 6881;
+    public long GlobalDownloadLimitBytesPerSecond { get; set; }
+    public long GlobalUploadLimitBytesPerSecond { get; set; }
 
     public ClientSettings(string? defaultDownloadDirectory = null)
     {

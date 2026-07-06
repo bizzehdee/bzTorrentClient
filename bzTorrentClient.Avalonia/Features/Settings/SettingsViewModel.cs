@@ -22,6 +22,13 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private int _listenPort;
 
+    /// <summary>KB/s shown to the user; 0 means unlimited. Converted to/from the underlying bytes/second setting.</summary>
+    [ObservableProperty]
+    private int _downloadLimitKBps;
+
+    [ObservableProperty]
+    private int _uploadLimitKBps;
+
     [ObservableProperty]
     private string? _errorMessage;
 
@@ -39,6 +46,8 @@ public partial class SettingsViewModel : ViewModelBase
         _globalMaxConnections = settings.GlobalMaxConnections;
         _maxConnectionsPerTorrent = settings.MaxConnectionsPerTorrent;
         _listenPort = settings.ListenPort;
+        _downloadLimitKBps = (int)(settings.GlobalDownloadLimitBytesPerSecond / 1024);
+        _uploadLimitKBps = (int)(settings.GlobalUploadLimitBytesPerSecond / 1024);
 
         SaveCommand = new RelayCommand(Save);
     }
@@ -63,12 +72,20 @@ public partial class SettingsViewModel : ViewModelBase
             return;
         }
 
+        if (DownloadLimitKBps < 0 || UploadLimitKBps < 0)
+        {
+            ErrorMessage = "Speed limits must not be negative — use 0 for unlimited.";
+            return;
+        }
+
         try
         {
             _settings.DefaultDownloadDirectory = DefaultDownloadDirectory;
             _settings.GlobalMaxConnections = GlobalMaxConnections;
             _settings.MaxConnectionsPerTorrent = MaxConnectionsPerTorrent;
             _settings.ListenPort = ListenPort;
+            _settings.GlobalDownloadLimitBytesPerSecond = (long)DownloadLimitKBps * 1024;
+            _settings.GlobalUploadLimitBytesPerSecond = (long)UploadLimitKBps * 1024;
             _settingsStore.Save(_settings);
         }
         catch (Exception ex)

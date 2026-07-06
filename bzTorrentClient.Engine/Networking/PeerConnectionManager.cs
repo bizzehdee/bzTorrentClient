@@ -21,6 +21,10 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
 {
     private const int MaxRequestsInFlight = 10;
     private const int HandshakeTimeoutSeconds = 8;
+
+    /// <summary>Used only to size a request against the download rate limiter before we know the real block length (almost always exactly this, per BEP-3 convention).</summary>
+    private const int TypicalBlockSize = 16 * 1024;
+
     private static readonly TimeSpan PexBroadcastInterval = TimeSpan.FromSeconds(30);
 
     private readonly IMetadata _metadata;
@@ -30,6 +34,8 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
     private readonly int _maxConnectionsPerTorrent;
     private readonly Func<int, bool> _tryReserveConnections;
     private readonly Action<int> _releaseConnections;
+    private readonly IRateLimiter _downloadLimiter;
+    private readonly IRateLimiter _uploadLimiter;
 
     private readonly ConcurrentQueue<IPEndPoint> _candidates = new();
     private readonly HashSet<string> _knownPeers = new();
@@ -50,7 +56,9 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         string localPeerId,
         int maxConnectionsPerTorrent,
         Func<int, bool> tryReserveConnections,
-        Action<int> releaseConnections)
+        Action<int> releaseConnections,
+        IRateLimiter? downloadLimiter = null,
+        IRateLimiter? uploadLimiter = null)
     {
         _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
@@ -59,6 +67,8 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         _maxConnectionsPerTorrent = maxConnectionsPerTorrent;
         _tryReserveConnections = tryReserveConnections ?? throw new ArgumentNullException(nameof(tryReserveConnections));
         _releaseConnections = releaseConnections ?? throw new ArgumentNullException(nameof(releaseConnections));
+        _downloadLimiter = downloadLimiter ?? new TokenBucketRateLimiter(() => 0);
+        _uploadLimiter = uploadLimiter ?? new TokenBucketRateLimiter(() => 0);
     }
 
     public int ActiveConnectionCount => _activeClients.Count;
@@ -175,6 +185,12 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
             if (!_pieceManager.IsPieceComplete(index))
                 return;
 
+            // Over the upload budget: just drop this request. The peer will either
+            // re-request later or move on to another source — there's no persistent
+            // state here to corrupt by declining, unlike the download side.
+            if (!_uploadLimiter.TryConsume(length))
+                return;
+
             try
             {
                 var pieceData = _storage.ReadPiece(index);
@@ -243,7 +259,10 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
                     break;
                 }
 
-                if (!choked && inflight < MaxRequestsInFlight)
+                // Checked before TryGetNextRequest, not after: that call marks whatever
+                // block it returns as requested, so a block declined here for lack of
+                // download budget would never get re-offered — it'd just silently stall.
+                if (!choked && inflight < MaxRequestsInFlight && _downloadLimiter.TryConsume(TypicalBlockSize))
                 {
                     var request = _pieceManager.TryGetNextRequest(peerId, peerBitfield);
                     if (request is not null)

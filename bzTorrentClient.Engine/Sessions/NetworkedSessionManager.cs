@@ -34,6 +34,12 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     private readonly TimeSpan _metadataFetchTimeout;
     private readonly TimeSpan _metadataRetryDelay;
 
+    // Shared across every torrent's connection manager, so the configured limit is a true
+    // global cap rather than per-torrent. Reads the current setting on every call (see
+    // TokenBucketRateLimiter), so changing it in the Settings dialog takes effect live.
+    private readonly IRateLimiter _downloadLimiter;
+    private readonly IRateLimiter _uploadLimiter;
+
     private readonly Dictionary<Guid, TorrentRuntime> _runtimes = new();
     private readonly object _runtimesLock = new();
 
@@ -53,6 +59,8 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         _connectionManagerFactory = connectionManagerFactory ?? DefaultConnectionManagerFactory;
         _metadataFetchTimeout = metadataFetchTimeout ?? DefaultMetadataFetchTimeout;
         _metadataRetryDelay = metadataRetryDelay ?? DefaultMetadataRetryDelay;
+        _downloadLimiter = new TokenBucketRateLimiter(() => _settings.GlobalDownloadLimitBytesPerSecond);
+        _uploadLimiter = new TokenBucketRateLimiter(() => _settings.GlobalUploadLimitBytesPerSecond);
     }
 
     public IReadOnlyCollection<TorrentSession> Sessions => _inner.Sessions;
@@ -332,7 +340,9 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
             _localPeerId,
             _settings.MaxConnectionsPerTorrent,
             TryReserveConnections,
-            ReleaseConnections);
+            ReleaseConnections,
+            _downloadLimiter,
+            _uploadLimiter);
 
     private sealed class TorrentRuntime : IDisposable
     {

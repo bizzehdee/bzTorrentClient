@@ -31,6 +31,10 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
                 GlobalMaxConnections = dto.GlobalMaxConnections > 0 ? dto.GlobalMaxConnections : new ClientSettings().GlobalMaxConnections,
                 MaxConnectionsPerTorrent = dto.MaxConnectionsPerTorrent > 0 ? dto.MaxConnectionsPerTorrent : new ClientSettings().MaxConnectionsPerTorrent,
                 ListenPort = dto.ListenPort is > 0 and <= 65535 ? dto.ListenPort : new ClientSettings().ListenPort,
+                // Unlike the settings above, zero is a valid, meaningful value here
+                // ("unlimited") rather than "unset" — only clamp genuinely invalid negatives.
+                GlobalDownloadLimitBytesPerSecond = Math.Max(0, dto.GlobalDownloadLimitBytesPerSecond),
+                GlobalUploadLimitBytesPerSecond = Math.Max(0, dto.GlobalUploadLimitBytesPerSecond),
             };
         }
         catch (JsonException)
@@ -49,6 +53,8 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
             GlobalMaxConnections = settings.GlobalMaxConnections,
             MaxConnectionsPerTorrent = settings.MaxConnectionsPerTorrent,
             ListenPort = settings.ListenPort,
+            GlobalDownloadLimitBytesPerSecond = settings.GlobalDownloadLimitBytesPerSecond,
+            GlobalUploadLimitBytesPerSecond = settings.GlobalUploadLimitBytesPerSecond,
         };
 
         var directory = Path.GetDirectoryName(_filePath);
@@ -64,5 +70,7 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
         public int GlobalMaxConnections { get; set; }
         public int MaxConnectionsPerTorrent { get; set; }
         public int ListenPort { get; set; }
+        public long GlobalDownloadLimitBytesPerSecond { get; set; }
+        public long GlobalUploadLimitBytesPerSecond { get; set; }
     }
 }

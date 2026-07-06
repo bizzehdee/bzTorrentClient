@@ -79,8 +79,68 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
         Assert.Equal(pieceData, downloaded);
     }
 
+    [Fact]
+    public async Task PeerConnectionManager_DownloadLimiter_PacesRequests()
+    {
+        // Real end-to-end proof the download rate limiter actually slows a transfer down,
+        // not just a unit test of TokenBucketRateLimiter in isolation. Three 16 KiB blocks
+        // (RarestFirstPieceManager.BlockSize) capped at 16 KiB/s should take a few seconds,
+        // not the sub-second it'd take unthrottled over loopback.
+        const int blockSize = RarestFirstPieceManager.BlockSize;
+        var pieceData = new byte[blockSize * 3];
+        new Random(42).NextBytes(pieceData);
+        var pieceHash = SHA1.HashData(pieceData);
+
+        var metadata = new FakeMetadata(
+            pieceCount: 1,
+            hashHex: InfoHashHex,
+            pieceSize: pieceData.Length,
+            pieceHashes: new[] { pieceHash },
+            files: new[] { new MetadataFileInfo { Id = 0, Filename = "payload.bin", FileStartByte = 0, FileSize = pieceData.Length } });
+
+        var tcpListener = new TcpListener(IPAddress.Loopback, 0);
+        tcpListener.Start();
+        var port = ((IPEndPoint)tcpListener.LocalEndpoint).Port;
+        _ = Task.Run(() => RunRawSeederAsync(tcpListener, pieceData, requestsToServe: 3));
+
+        var storage = new FileSystemTorrentStorage(metadata, _leecherDir);
+        storage.EnsureAllocated();
+        var pieceManager = new RarestFirstPieceManager(metadata, storage);
+        var downloadLimiter = new TokenBucketRateLimiter(() => blockSize);
+
+        using var connectionManager = new PeerConnectionManager(
+            metadata,
+            storage,
+            pieceManager,
+            LeecherPeerId,
+            maxConnectionsPerTorrent: 5,
+            tryReserveConnections: _ => true,
+            releaseConnections: _ => { },
+            downloadLimiter: downloadLimiter);
+
+        var startedAt = DateTime.UtcNow;
+        connectionManager.Start();
+        connectionManager.AddPeerCandidate(new IPEndPoint(IPAddress.Loopback, port));
+
+        var completed = await SpinUntilAsync(() => pieceManager.IsComplete, TimeSpan.FromSeconds(20));
+        var elapsed = DateTime.UtcNow - startedAt;
+
+        connectionManager.Stop();
+        tcpListener.Stop();
+
+        Assert.True(completed, "Expected all three blocks to be downloaded and verified within the timeout.");
+        // The bucket starts empty, so even the first of three same-rate blocks must wait
+        // for a refill — comfortably over a second is a safe, non-flaky lower bound that
+        // an unthrottled loopback transfer (normally tens of milliseconds) would never hit.
+        Assert.True(elapsed >= TimeSpan.FromSeconds(1), $"Expected the rate limit to slow the download down; only took {elapsed.TotalMilliseconds}ms.");
+    }
+
     /// <summary>Minimal BEP-3 peer: handshake, send an all-ones bitfield, unchoke on Interested, serve one Request.</summary>
-    private static async Task RunRawSeederAsync(TcpListener listener, byte[] pieceData)
+    private static Task RunRawSeederAsync(TcpListener listener, byte[] pieceData) =>
+        RunRawSeederAsync(listener, pieceData, requestsToServe: 1);
+
+    /// <summary>Minimal BEP-3 peer: handshake, send an all-ones bitfield, unchoke on Interested, serve up to <paramref name="requestsToServe"/> Requests.</summary>
+    private static async Task RunRawSeederAsync(TcpListener listener, byte[] pieceData, int requestsToServe)
     {
         using var client = await listener.AcceptTcpClientAsync();
         using var stream = client.GetStream();
@@ -94,7 +154,8 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
 
         await stream.WriteAsync(BuildMessage(5, new byte[] { 0x80 })); // bitfield: piece 0 set
 
-        while (true)
+        var requestsServed = 0;
+        while (requestsServed < requestsToServe)
         {
             var lengthBuffer = new byte[4];
             if (!await TryReadExactAsync(stream, lengthBuffer))
@@ -124,7 +185,7 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
                 Array.Copy(pieceData, (int)begin, payload, 8, (int)reqLength);
 
                 await stream.WriteAsync(BuildMessage(7, payload));
-                return;
+                requestsServed++;
             }
         }
     }

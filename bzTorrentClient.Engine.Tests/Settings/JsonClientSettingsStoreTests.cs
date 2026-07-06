@@ -32,6 +32,8 @@ public class JsonClientSettingsStoreTests : IDisposable
             GlobalMaxConnections = 42,
             MaxConnectionsPerTorrent = 7,
             ListenPort = 12345,
+            GlobalDownloadLimitBytesPerSecond = 512_000,
+            GlobalUploadLimitBytesPerSecond = 128_000,
         };
 
         store.Save(settings);
@@ -41,6 +43,28 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.Equal(42, reloaded.GlobalMaxConnections);
         Assert.Equal(7, reloaded.MaxConnectionsPerTorrent);
         Assert.Equal(12345, reloaded.ListenPort);
+        Assert.Equal(512_000, reloaded.GlobalDownloadLimitBytesPerSecond);
+        Assert.Equal(128_000, reloaded.GlobalUploadLimitBytesPerSecond);
+    }
+
+    [Fact]
+    public void SaveThenLoad_ZeroSpeedLimits_StaysZeroNotDefault()
+    {
+        // Unlike the other numeric settings, 0 is a meaningful value here ("unlimited"),
+        // not a sentinel for "unset" — it must round-trip as 0, not fall back to some
+        // non-zero default the way GlobalMaxConnections etc. do.
+        var store = new JsonClientSettingsStore(_filePath);
+        var settings = new ClientSettings("/custom/downloads")
+        {
+            GlobalDownloadLimitBytesPerSecond = 0,
+            GlobalUploadLimitBytesPerSecond = 0,
+        };
+
+        store.Save(settings);
+        var reloaded = store.Load();
+
+        Assert.Equal(0, reloaded.GlobalDownloadLimitBytesPerSecond);
+        Assert.Equal(0, reloaded.GlobalUploadLimitBytesPerSecond);
     }
 
     [Fact]

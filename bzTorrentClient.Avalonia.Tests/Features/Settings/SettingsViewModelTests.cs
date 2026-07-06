@@ -39,6 +39,54 @@ public class SettingsViewModelTests
         Assert.NotNull(store.Saved);
     }
 
+    [Fact]
+    public void Save_SpeedLimits_PersistsAsBytesPerSecond()
+    {
+        var settings = new ClientSettings("/downloads");
+        var store = new FakeClientSettingsStore();
+        var viewModel = new SettingsViewModel(settings, store)
+        {
+            DownloadLimitKBps = 500,
+            UploadLimitKBps = 0,
+        };
+
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.Equal(500 * 1024, settings.GlobalDownloadLimitBytesPerSecond);
+        Assert.Equal(0, settings.GlobalUploadLimitBytesPerSecond);
+    }
+
+    [Fact]
+    public void Constructor_LoadsExistingSpeedLimitsAsKBps()
+    {
+        var settings = new ClientSettings("/downloads")
+        {
+            GlobalDownloadLimitBytesPerSecond = 2048,
+            GlobalUploadLimitBytesPerSecond = 1024,
+        };
+        var viewModel = new SettingsViewModel(settings, new FakeClientSettingsStore());
+
+        Assert.Equal(2, viewModel.DownloadLimitKBps);
+        Assert.Equal(1, viewModel.UploadLimitKBps);
+    }
+
+    [Fact]
+    public void Save_NegativeSpeedLimit_SetsErrorAndDoesNotPersist()
+    {
+        var settings = new ClientSettings("/downloads");
+        var store = new FakeClientSettingsStore();
+        var viewModel = new SettingsViewModel(settings, store)
+        {
+            DownloadLimitKBps = -1,
+        };
+
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.NotNull(viewModel.ErrorMessage);
+        Assert.Null(store.Saved);
+    }
+
     [Theory]
     [InlineData("", 10, 10, 6881)]
     [InlineData("/downloads", 0, 10, 6881)]

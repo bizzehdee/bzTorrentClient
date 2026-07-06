@@ -46,6 +46,22 @@
             </StackPanel>
         </Border>
 
+        <Border Classes="Card">
+            <StackPanel Spacing="{StaticResource SpaceMd}">
+
+                <StackPanel Spacing="{StaticResource SpaceXs}">
+                    <TextBlock Classes="Caption" Text="DOWNLOAD LIMIT (KB/S, 0 = UNLIMITED)"/>
+                    <NumericUpDown Value="{Binding DownloadLimitKBps}" Minimum="0" Maximum="1000000" Increment="10" FormatString="0"/>
+                </StackPanel>
+
+                <StackPanel Spacing="{StaticResource SpaceXs}">
+                    <TextBlock Classes="Caption" Text="UPLOAD LIMIT (KB/S, 0 = UNLIMITED)"/>
+                    <NumericUpDown Value="{Binding UploadLimitKBps}" Minimum="0" Maximum="1000000" Increment="10" FormatString="0"/>
+                </StackPanel>
+
+            </StackPanel>
+        </Border>
+
         <TextBlock Classes="Body" Text="{Binding ErrorMessage}" Foreground="{DynamicResource StateErrorBrush}" TextWrapping="Wrap"
                    IsVisible="{Binding ErrorMessage, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
 
