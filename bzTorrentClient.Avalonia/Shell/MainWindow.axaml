@@ -1,0 +1,55 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:bzTorrentClient.Avalonia.Shell"
+        xmlns:torrentList="using:bzTorrentClient.Avalonia.Features.TorrentList"
+        xmlns:torrentDetails="using:bzTorrentClient.Avalonia.Features.TorrentDetails"
+        xmlns:statusFooter="using:bzTorrentClient.Avalonia.Features.StatusFooter"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="680"
+        x:Class="bzTorrentClient.Avalonia.Shell.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="bzTorrentClient"
+        Background="{DynamicResource AppBackgroundBrush}"
+        Width="1100" Height="680" MinWidth="760" MinHeight="480">
+
+    <Grid RowDefinitions="*,Auto">
+
+        <Grid Grid.Row="0" ColumnDefinitions="64,*,340">
+
+            <!-- Command rail: the app's two global actions, always in the same place. -->
+            <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource BorderBrush1}" BorderThickness="0,0,1,0">
+                <DockPanel Margin="0,16">
+                    <Button Classes="Icon Accent" DockPanel.Dock="Top" HorizontalAlignment="Center"
+                            Command="{Binding OpenAddTorrentCommand}" ToolTip.Tip="Add torrent">
+                        <PathIcon Data="{StaticResource IconPlus}" Width="16" Height="16"/>
+                    </Button>
+                    <Button Classes="Icon" DockPanel.Dock="Bottom" HorizontalAlignment="Center"
+                            Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings">
+                        <PathIcon Data="{StaticResource IconSettings}" Width="16" Height="16"/>
+                    </Button>
+                </DockPanel>
+            </Border>
+
+            <!-- Swarm list: every torrent this client knows about. -->
+            <DockPanel Grid.Column="1" Margin="{StaticResource SpaceLgThickness}">
+                <TextBlock DockPanel.Dock="Top" Classes="Heading" Text="Torrents" Margin="0,0,0,12"/>
+                <torrentList:TorrentListView DataContext="{Binding TorrentList}"/>
+            </DockPanel>
+
+            <!-- Inspector: detail on whatever's selected in the swarm list. -->
+            <Border Grid.Column="2" Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource BorderBrush1}" BorderThickness="1,0,0,0">
+                <torrentDetails:TorrentDetailsView DataContext="{Binding Details}"/>
+            </Border>
+
+        </Grid>
+
+        <!-- Footer: app-wide peer-discovery and throughput totals. -->
+        <statusFooter:StatusFooterView Grid.Row="1" DataContext="{Binding StatusFooter}"/>
+
+    </Grid>
+
+</Window>

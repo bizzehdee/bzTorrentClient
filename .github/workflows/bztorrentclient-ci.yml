@@ -1,0 +1,38 @@
+name: bzTorrentClient CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore bzTorrentClient.sln
+
+      - name: Build
+        run: dotnet build bzTorrentClient.sln --configuration Release --no-restore
+
+      - name: Test Engine
+        run: dotnet test bzTorrentClient.Engine.Tests/bzTorrentClient.Engine.Tests.csproj --configuration Release --no-build --verbosity normal
+
+      - name: Test Avalonia UI
+        run: dotnet test bzTorrentClient.Avalonia.Tests/bzTorrentClient.Avalonia.Tests.csproj --configuration Release --no-build --verbosity normal

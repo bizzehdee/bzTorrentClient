@@ -1,0 +1,54 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Type scale. Inter (embedded via Avalonia.Fonts.Inter, WithInterFont()) is the
+       app-wide default already; roles are expressed through size/weight, not a font
+       swap, so the app reads as one calm voice with a data-oriented mono accent. -->
+
+  <Style Selector="TextBlock.Display">
+    <Setter Property="FontSize" Value="32"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="LineHeight" Value="40"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+  </Style>
+
+  <Style Selector="TextBlock.Title">
+    <Setter Property="FontSize" Value="22"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="LineHeight" Value="30"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+  </Style>
+
+  <Style Selector="TextBlock.Heading">
+    <Setter Property="FontSize" Value="16"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+    <Setter Property="LineHeight" Value="22"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+  </Style>
+
+  <Style Selector="TextBlock.Body">
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="LineHeight" Value="19"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+  </Style>
+
+  <Style Selector="TextBlock.BodyStrong">
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+    <Setter Property="LineHeight" Value="19"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+  </Style>
+
+  <Style Selector="TextBlock.Caption">
+    <Setter Property="FontSize" Value="11.5"/>
+    <Setter Property="LineHeight" Value="16"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+  </Style>
+
+  <Style Selector="TextBlock.Mono">
+    <Setter Property="FontFamily" Value="{DynamicResource MonoFontFamily}"/>
+    <Setter Property="FontSize" Value="11.5"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+  </Style>
+
+</Styles>

@@ -1,0 +1,86 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:bzTorrentClient.Avalonia.Features.TorrentDetails"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="340" d:DesignHeight="600"
+             x:Class="bzTorrentClient.Avalonia.Features.TorrentDetails.TorrentDetailsView"
+             x:DataType="vm:TorrentDetailsViewModel">
+
+    <Grid>
+
+        <!-- Empty state: an invitation to act, not a blank pane. -->
+        <StackPanel IsVisible="{Binding !HasSelection}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Margin="24" Spacing="6" MaxWidth="220">
+            <TextBlock Classes="Heading" Text="No torrent selected" HorizontalAlignment="Center" TextAlignment="Center"/>
+            <TextBlock Classes="Caption" Text="Pick a torrent from the list to see its peers, files, and download progress here."
+                       TextAlignment="Center" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <DockPanel IsVisible="{Binding HasSelection}" Margin="{StaticResource SpaceLgThickness}">
+
+            <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,16">
+                <TextBlock Classes="Title" Text="{Binding Name}" TextWrapping="Wrap"/>
+                <TextBlock Classes="Mono" Text="{Binding InfoHash}"/>
+                <TextBlock Classes="Caption" Text="{Binding DownloadDirectory}" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <!-- Signature: the piece-map heat strip — every torrent client's real "fingerprint"
+                 of what's actually been verified on disk, not just a percentage. -->
+            <Border DockPanel.Dock="Top" Classes="Card" Margin="0,0,0,16" Padding="12">
+                <StackPanel Spacing="8">
+                    <TextBlock Classes="Caption" Text="PIECE MAP"/>
+                    <ItemsControl ItemsSource="{Binding PieceMap}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PieceMapCell">
+                                <Grid Width="7" Height="7" Margin="0.5">
+                                    <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="1.5"/>
+                                    <Border Background="{DynamicResource AccentBrush}" CornerRadius="1.5" Opacity="{Binding Fill}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <TabControl>
+                <TabItem Header="Peers">
+                    <ListBox ItemsSource="{Binding Peers}" Background="Transparent">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Classes="Mono" Text="{Binding}"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </TabItem>
+                <TabItem Header="Files">
+                    <ListBox ItemsSource="{Binding Files}" Background="Transparent">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:FileRowViewModel">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Classes="Body" Text="{Binding Filename}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Column="1" Classes="Caption" Text="{Binding FileSize, StringFormat='{}{0:N0} B'}" Margin="8,0,0,0"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </TabItem>
+                <TabItem Header="Trackers">
+                    <ListBox ItemsSource="{Binding Trackers}" Background="Transparent">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Classes="Body" Text="{Binding}" TextTrimming="CharacterEllipsis"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </TabItem>
+            </TabControl>
+        </DockPanel>
+    </Grid>
+
+</UserControl>

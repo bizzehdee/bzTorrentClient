@@ -1,0 +1,95 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:bzTorrentClient.Avalonia.Features.TorrentList"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="400"
+             x:Class="bzTorrentClient.Avalonia.Features.TorrentList.TorrentListView"
+             x:DataType="vm:TorrentListViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}"/>
+        </Style>
+        <Style Selector="Border.Card.Selected">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="BorderThickness" Value="1.5"/>
+        </Style>
+    </UserControl.Styles>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Classes="Card" Background="#1AD9534F" BorderBrush="{DynamicResource StateErrorBrush}"
+                Margin="0,0,0,12" Padding="12,8"
+                IsVisible="{Binding LastErrorMessage, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
+            <TextBlock Classes="Body" Text="{Binding LastErrorMessage}" Foreground="{DynamicResource StateErrorBrush}" TextWrapping="Wrap"/>
+        </Border>
+
+        <ListBox ItemsSource="{Binding Torrents}" SelectedItem="{Binding SelectedTorrent}" SelectionMode="Single"
+                 Background="Transparent">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:TorrentRowViewModel">
+                    <Border Classes="Card Hoverable" Cursor="Hand"
+                            Classes.Selected="{Binding $parent[ListBoxItem].IsSelected}">
+                        <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+
+                            <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Classes="BodyStrong" Text="{Binding Name}"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <Border Grid.Column="1" Classes="Pill">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                                 Fill="{Binding State, Converter={x:Static vm:TorrentStateConverters.ToBrush}}"/>
+                                        <TextBlock Classes="Caption" Text="{Binding State}"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                <ProgressBar Grid.Column="0" VerticalAlignment="Center"
+                                             Minimum="0" Maximum="100" Value="{Binding ProgressPercent}"
+                                             Height="6" CornerRadius="3"
+                                             Foreground="{DynamicResource AccentBrush}"/>
+                                <TextBlock Grid.Column="1" Classes="Caption" VerticalAlignment="Center"
+                                           Text="{Binding ProgressPercent, StringFormat={}{0}%}"/>
+                            </Grid>
+
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="14">
+                                <TextBlock Classes="Caption" Text="{Binding SizeText}"/>
+                                <TextBlock Classes="Caption" Text="{Binding PeerCount, StringFormat={}{0} peers}"/>
+                                <TextBlock Classes="Caption" Text="{Binding DownloadSpeedText, StringFormat='↓ {0}'}"/>
+                                <TextBlock Classes="Caption" Text="{Binding UploadSpeedText, StringFormat='↑ {0}'}"/>
+                            </StackPanel>
+
+                            <Grid Grid.Row="3" ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Classes="Caption" Foreground="{DynamicResource StateErrorBrush}"
+                                           TextWrapping="Wrap" VerticalAlignment="Center"
+                                           Text="{Binding ErrorMessage}"
+                                           IsVisible="{Binding ErrorMessage, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+                                    <Button Classes="Icon Accent" ToolTip.Tip="Start" Command="{Binding StartCommand}">
+                                        <PathIcon Data="{StaticResource IconPlay}" Width="14" Height="14"/>
+                                    </Button>
+                                    <Button Classes="Icon" ToolTip.Tip="Pause" Command="{Binding PauseCommand}">
+                                        <PathIcon Data="{StaticResource IconPause}" Width="14" Height="14"/>
+                                    </Button>
+                                    <Button Classes="Icon" ToolTip.Tip="Stop" Command="{Binding StopCommand}">
+                                        <PathIcon Data="{StaticResource IconStop}" Width="14" Height="14"/>
+                                    </Button>
+                                    <Button Classes="Icon" ToolTip.Tip="Remove" Command="{Binding RemoveCommand}">
+                                        <PathIcon Data="{StaticResource IconClose}" Width="14" Height="14"/>
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+
+</UserControl>

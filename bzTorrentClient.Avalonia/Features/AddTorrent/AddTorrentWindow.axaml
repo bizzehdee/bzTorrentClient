@@ -1,0 +1,68 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:bzTorrentClient.Avalonia.Features.AddTorrent"
+        xmlns:conv="using:Avalonia.Data.Converters"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="420"
+        x:Class="bzTorrentClient.Avalonia.Features.AddTorrent.AddTorrentWindow"
+        x:DataType="vm:AddTorrentViewModel"
+        Width="480" SizeToContent="Height" CanResize="False"
+        Background="{DynamicResource AppBackgroundBrush}"
+        Title="Add Torrent">
+
+    <StackPanel Margin="{StaticResource SpaceLgThickness}" Spacing="{StaticResource SpaceMd}">
+
+        <TextBlock Classes="Title" Text="Add a torrent"/>
+
+        <StackPanel Orientation="Horizontal" Spacing="6">
+            <Button Classes="Secondary" Content="Torrent file"
+                    Classes.Selected="{Binding Mode, Converter={x:Static conv:ObjectConverters.Equal}, ConverterParameter={x:Static vm:AddTorrentMode.File}}"
+                    Command="{Binding SetModeCommand}" CommandParameter="{x:Static vm:AddTorrentMode.File}"/>
+            <Button Classes="Secondary" Content="Magnet link"
+                    Classes.Selected="{Binding Mode, Converter={x:Static conv:ObjectConverters.Equal}, ConverterParameter={x:Static vm:AddTorrentMode.Magnet}}"
+                    Command="{Binding SetModeCommand}" CommandParameter="{x:Static vm:AddTorrentMode.Magnet}"/>
+            <Button Classes="Secondary" Content="Info-hash"
+                    Classes.Selected="{Binding Mode, Converter={x:Static conv:ObjectConverters.Equal}, ConverterParameter={x:Static vm:AddTorrentMode.InfoHash}}"
+                    Command="{Binding SetModeCommand}" CommandParameter="{x:Static vm:AddTorrentMode.InfoHash}"/>
+        </StackPanel>
+
+        <Border Classes="Card">
+            <StackPanel Spacing="{StaticResource SpaceSm}">
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8"
+                      IsVisible="{Binding Mode, Converter={x:Static conv:ObjectConverters.Equal}, ConverterParameter={x:Static vm:AddTorrentMode.File}}">
+                    <TextBox Grid.Column="0" Text="{Binding TorrentFilePath}" PlaceholderText="Path to .torrent file"/>
+                    <Button Grid.Column="1" Classes="Secondary" Content="Browse…" Click="OnBrowseTorrentFileClick"/>
+                </Grid>
+
+                <TextBox Text="{Binding MagnetUri}" PlaceholderText="magnet:?xt=urn:btih:..."
+                         IsVisible="{Binding Mode, Converter={x:Static conv:ObjectConverters.Equal}, ConverterParameter={x:Static vm:AddTorrentMode.Magnet}}"/>
+
+                <TextBox Text="{Binding InfoHash}" PlaceholderText="40-character hex info-hash" FontFamily="{DynamicResource MonoFontFamily}"
+                         IsVisible="{Binding Mode, Converter={x:Static conv:ObjectConverters.Equal}, ConverterParameter={x:Static vm:AddTorrentMode.InfoHash}}"/>
+
+            </StackPanel>
+        </Border>
+
+        <StackPanel Spacing="{StaticResource SpaceXs}">
+            <TextBlock Classes="Caption" Text="DOWNLOAD DIRECTORY"/>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBox Grid.Column="0" Text="{Binding DownloadDirectory}"/>
+                <Button Grid.Column="1" Classes="Secondary" Content="Browse…" Click="OnBrowseDownloadDirectoryClick"/>
+            </Grid>
+        </StackPanel>
+
+        <CheckBox Content="Add paused (don't start downloading yet)" IsChecked="{Binding StartPaused}"/>
+
+        <TextBlock Classes="Body" Text="{Binding ErrorMessage}" Foreground="{DynamicResource StateErrorBrush}" TextWrapping="Wrap"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Classes="Ghost" Content="Cancel" Click="OnCancelClick"/>
+            <Button Classes="Primary" Content="Add" Command="{Binding AddCommand}" IsDefault="True"/>
+        </StackPanel>
+
+    </StackPanel>
+
+</Window>

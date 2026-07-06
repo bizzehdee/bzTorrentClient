@@ -1,0 +1,120 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Global corner radius + calm 150ms transitions instead of FluentTheme's sharper defaults. -->
+  <Style Selector="Button">
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
+    <Setter Property="Padding" Value="14,7"/>
+    <Setter Property="MinHeight" Value="34"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.15"/>
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.1"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button:pressed">
+    <Setter Property="RenderTransform" Value="scale(0.98)"/>
+  </Style>
+
+  <Style Selector="TextBox">
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
+    <Setter Property="Padding" Value="10,7"/>
+  </Style>
+
+  <Style Selector="NumericUpDown">
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
+  </Style>
+
+  <!-- Primary: filled accent. Used for the one main action per surface (Add, Save). -->
+  <Style Selector="Button.Primary">
+    <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+    <Setter Property="BorderThickness" Value="0"/>
+  </Style>
+  <Style Selector="Button.Primary:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
+  </Style>
+  <Style Selector="Button.Primary:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentPressedBrush}"/>
+  </Style>
+
+  <!-- Secondary: outlined, subtle fill on hover. Used for row-level actions. -->
+  <Style Selector="Button.Secondary">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush1}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+  </Style>
+  <Style Selector="Button.Secondary:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+  </Style>
+
+  <!-- Selected variant: a lightweight segmented-control look for mode pickers, in place of stacked radio buttons. -->
+  <Style Selector="Button.Secondary.Selected">
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+    <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+  </Style>
+  <Style Selector="Button.Secondary.Selected:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
+  </Style>
+
+  <!-- Ghost: text-only tertiary action (Cancel). -->
+  <Style Selector="Button.Ghost">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+  </Style>
+  <Style Selector="Button.Ghost:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+  </Style>
+
+  <!-- Icon: square, minimal chrome, used in the rail and compact row actions. -->
+  <Style Selector="Button.Icon">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Width" Value="34"/>
+    <Setter Property="Height" Value="34"/>
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.Icon:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+  </Style>
+  <Style Selector="Button.Icon.Accent">
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+  </Style>
+
+  <!-- Card: the core surface. Soft border, subtle elevation — never both heavily. -->
+  <Style Selector="Border.Card">
+    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush1}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}"/>
+    <Setter Property="BoxShadow" Value="{DynamicResource CardShadow}"/>
+    <Setter Property="Padding" Value="16"/>
+  </Style>
+  <Style Selector="Border.Card.Hoverable:pointerover">
+    <Setter Property="BoxShadow" Value="{DynamicResource CardShadowHover}"/>
+  </Style>
+
+  <!-- Dialog surface: slightly larger radius/elevation than a card. -->
+  <Style Selector="Border.DialogSurface">
+    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusLg}"/>
+  </Style>
+
+  <!-- State pill: small rounded label used with a colored dot, never color alone. -->
+  <Style Selector="Border.Pill">
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}"/>
+    <Setter Property="Padding" Value="8,3"/>
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+  </Style>
+
+</Styles>
