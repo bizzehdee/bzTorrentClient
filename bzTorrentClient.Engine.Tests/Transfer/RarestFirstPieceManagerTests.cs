@@ -87,6 +87,39 @@ public class RarestFirstPieceManagerTests : IDisposable
     }
 
     [Fact]
+    public void OnBlockReceived_CorrectHash_RaisesPieceCompleted()
+    {
+        // Regression test: nothing outside this manager was told when a piece finished —
+        // NetworkedSessionManager had no way to update TorrentSession.PieceCompletion, so
+        // download progress/"downloaded" bytes stayed stuck at 0% even while data was
+        // genuinely being received and written to disk. PieceCompleted is how that gap
+        // gets closed: NetworkedSessionManager wires it straight to session.MarkPieceVerified.
+        var (metadata, storage, contents) = CreateFixture(1);
+        var manager = new RarestFirstPieceManager(metadata, storage);
+
+        int? raisedIndex = null;
+        manager.PieceCompleted += index => raisedIndex = index;
+
+        manager.OnBlockReceived(0, 0, contents[0]);
+
+        Assert.Equal(0, raisedIndex);
+    }
+
+    [Fact]
+    public void OnBlockReceived_WrongHash_DoesNotRaisePieceCompleted()
+    {
+        var (metadata, storage, _) = CreateFixture(1);
+        var manager = new RarestFirstPieceManager(metadata, storage);
+
+        var raised = false;
+        manager.PieceCompleted += _ => raised = true;
+
+        manager.OnBlockReceived(0, 0, new byte[PieceSize]);
+
+        Assert.False(raised);
+    }
+
+    [Fact]
     public void OnBlockReceived_WrongHash_DoesNotCompleteAndAllowsRetry()
     {
         var (metadata, storage, _) = CreateFixture(1);

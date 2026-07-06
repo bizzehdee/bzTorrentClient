@@ -4,6 +4,9 @@ public interface IPieceManager
 {
     bool IsComplete { get; }
 
+    /// <summary>Raised once a piece finishes and verifies against its expected hash — this manager's own completion tracking is internal, so the session's progress/persistence state must be updated by whoever owns it, in response to this event.</summary>
+    event Action<int>? PieceCompleted;
+
     bool IsPieceComplete(int pieceIndex);
 
     void RegisterPeerBitfield(int peerId, bool[] bitfield);

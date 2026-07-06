@@ -25,6 +25,8 @@ public sealed class RarestFirstPieceManager : IPieceManager
         _availability = new int[_pieceHashes.Count];
     }
 
+    public event Action<int>? PieceCompleted;
+
     public bool IsComplete => _completed.Length > 0 && Array.TrueForAll(_completed, done => done);
 
     public bool IsPieceComplete(int pieceIndex) => pieceIndex >= 0 && pieceIndex < _completed.Length && _completed[pieceIndex];
@@ -153,8 +155,13 @@ public sealed class RarestFirstPieceManager : IPieceManager
                 return null;
 
             _completed[pieceIndex] = true;
-            return pieceIndex;
         }
+
+        // Raised outside the lock: this manager's own state is already consistent by
+        // this point, and the subscriber (TorrentSession, via NetworkedSessionManager)
+        // must not run under this manager's lock.
+        PieceCompleted?.Invoke(pieceIndex);
+        return pieceIndex;
     }
 
     private int BlockCountFor(int pieceIndex) =>

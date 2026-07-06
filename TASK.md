@@ -3,6 +3,37 @@
 Scope, ordering, and dependencies as defined in `PLAN.md`. Implementation on
 any task only begins when explicitly requested by ID or name.
 
+## Peers connect but nothing downloads/no metadata shown (user-reported)
+
+- Root cause: `RarestFirstPieceManager` clones `session.PieceCompletion` at
+  construction (so it can resume from prior progress) but from then on
+  tracked piece completion purely in its own private `_completed` array —
+  nothing ever wrote a finished, verified piece back to
+  `TorrentSession.PieceCompletion`. Since the UI's progress bar, "downloaded"
+  size, and `Completed` state all derive from `session.ProgressFraction`
+  (which reads `PieceCompletion`), they stayed stuck at 0% forever — even
+  while bytes were genuinely being received and written to disk. Restarting
+  a torrent would also silently re-download everything already fetched,
+  since the cloned completion state was never persisted back either.
+- Fixed by adding `IPieceManager.PieceCompleted` (an `event Action<int>?`,
+  raised by `RarestFirstPieceManager.OnBlockReceived` once a piece verifies)
+  and wiring it in `NetworkedSessionManager.BuildPieceAndConnectionManagers`:
+  `pieceManager.PieceCompleted += session.MarkPieceVerified;`. Raised outside
+  the piece manager's internal lock to avoid running the session callback
+  under it.
+- This was investigated after a user report of "significant numbers of
+  peers connecting, but nothing being downloaded or any metadata being
+  transferred" — peer connections and the wire protocol itself checked out
+  (handshake/bitfield/request/piece paths were all already correct), so the
+  missing link was specifically this completion feedback loop, not the
+  networking layer.
+- Tests: `RarestFirstPieceManagerTests.OnBlockReceived_CorrectHash_RaisesPieceCompleted`,
+  `OnBlockReceived_WrongHash_DoesNotRaisePieceCompleted`;
+  `NetworkedSessionManagerTests.OnBlockReceived_CompletesPiece_UpdatesSessionProgress`
+  (builds a real single-piece .torrent via `Metadata.CreateFromPath` to
+  exercise the full wiring end-to-end, not just the piece manager in
+  isolation).
+
 ## Per-torrent and global network stats (user-requested)
 
 - **Per torrent** (`TorrentListView` row): size (verified-progress bytes /

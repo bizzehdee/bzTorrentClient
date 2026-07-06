@@ -1,3 +1,4 @@
+using bzTorrent.Data;
 using bzTorrentClient.Engine.Networking;
 using bzTorrentClient.Engine.Sessions;
 using bzTorrentClient.Engine.Settings;
@@ -19,7 +20,7 @@ public class NetworkedSessionManagerTests : IDisposable
             Directory.Delete(_tempDir, recursive: true);
     }
 
-    private (NetworkedSessionManager manager, Dictionary<Guid, FakePeerSource> peerSources, Dictionary<Guid, FakePeerConnectionManager> connectionManagers)
+    private (NetworkedSessionManager manager, Dictionary<Guid, FakePeerSource> peerSources, Dictionary<Guid, FakePeerConnectionManager> connectionManagers, Dictionary<Guid, IPieceManager> pieceManagers)
         CreateManager()
     {
         var store = new InMemorySessionStore();
@@ -28,6 +29,7 @@ public class NetworkedSessionManagerTests : IDisposable
 
         var peerSources = new Dictionary<Guid, FakePeerSource>();
         var connectionManagers = new Dictionary<Guid, FakePeerConnectionManager>();
+        var pieceManagers = new Dictionary<Guid, IPieceManager>();
 
         var manager = new NetworkedSessionManager(
             inner,
@@ -39,15 +41,16 @@ public class NetworkedSessionManagerTests : IDisposable
                 peerSources[session.Id] = fake;
                 return fake;
             },
-            connectionManagerFactory: (session, _, _) =>
+            connectionManagerFactory: (session, _, pieceManager) =>
             {
                 var fake = new FakePeerConnectionManager();
                 connectionManagers[session.Id] = fake;
+                pieceManagers[session.Id] = pieceManager;
                 return fake;
             },
             metadataFetchTimeout: TimeSpan.FromMilliseconds(100));
 
-        return (manager, peerSources, connectionManagers);
+        return (manager, peerSources, connectionManagers, pieceManagers);
     }
 
     private static TorrentAddSource.TorrentFile RealTorrentFileSource() =>
@@ -59,7 +62,7 @@ public class NetworkedSessionManagerTests : IDisposable
     [Fact]
     public async Task StartAsync_TorrentFileSession_StartsPeerSourceAndConnectionManager()
     {
-        var (manager, peerSources, connectionManagers) = CreateManager();
+        var (manager, peerSources, connectionManagers, _) = CreateManager();
         var session = await manager.AddAsync(RealTorrentFileSource(), null, false);
 
         await manager.StartAsync(session.Id);
@@ -72,7 +75,7 @@ public class NetworkedSessionManagerTests : IDisposable
     [Fact]
     public async Task StartAsync_MagnetOnlySession_AttemptsMetadataFetchButLeavesStubIfNoPeers()
     {
-        var (manager, peerSources, connectionManagers) = CreateManager();
+        var (manager, peerSources, connectionManagers, _) = CreateManager();
         var session = await manager.AddAsync(MagnetOnlySource(), null, false);
 
         await manager.StartAsync(session.Id);
@@ -90,7 +93,7 @@ public class NetworkedSessionManagerTests : IDisposable
     [Fact]
     public async Task PeerFound_FromPeerSource_IsForwardedToConnectionManager()
     {
-        var (manager, peerSources, connectionManagers) = CreateManager();
+        var (manager, peerSources, connectionManagers, _) = CreateManager();
         var session = await manager.AddAsync(RealTorrentFileSource(), null, false);
         await manager.StartAsync(session.Id);
 
@@ -103,7 +106,7 @@ public class NetworkedSessionManagerTests : IDisposable
     [Fact]
     public async Task PauseAsync_PausesConnectionManagerButKeepsPeerSourceRunning()
     {
-        var (manager, peerSources, connectionManagers) = CreateManager();
+        var (manager, peerSources, connectionManagers, _) = CreateManager();
         var session = await manager.AddAsync(RealTorrentFileSource(), null, true);
 
         await manager.PauseAsync(session.Id);
@@ -116,7 +119,7 @@ public class NetworkedSessionManagerTests : IDisposable
     [Fact]
     public async Task StopAsync_DisposesBothPeerSourceAndConnectionManager()
     {
-        var (manager, peerSources, connectionManagers) = CreateManager();
+        var (manager, peerSources, connectionManagers, _) = CreateManager();
         var session = await manager.AddAsync(RealTorrentFileSource(), null, true);
 
         await manager.StopAsync(session.Id);
@@ -128,7 +131,7 @@ public class NetworkedSessionManagerTests : IDisposable
     [Fact]
     public async Task StartAsync_AfterStop_CreatesFreshRuntime()
     {
-        var (manager, peerSources, connectionManagers) = CreateManager();
+        var (manager, peerSources, connectionManagers, _) = CreateManager();
         var session = await manager.AddAsync(RealTorrentFileSource(), null, true);
         var firstConnectionManager = connectionManagers[session.Id];
 
@@ -142,7 +145,7 @@ public class NetworkedSessionManagerTests : IDisposable
     [Fact]
     public async Task RemoveAsync_TearsDownRuntimeAndForgetsSession()
     {
-        var (manager, peerSources, connectionManagers) = CreateManager();
+        var (manager, peerSources, connectionManagers, _) = CreateManager();
         var session = await manager.AddAsync(RealTorrentFileSource(), null, true);
 
         await manager.RemoveAsync(session.Id);
@@ -155,7 +158,7 @@ public class NetworkedSessionManagerTests : IDisposable
     [Fact]
     public async Task GetNetworkStats_CombinesPeerSourceAndConnectionManagerCounters()
     {
-        var (manager, peerSources, connectionManagers) = CreateManager();
+        var (manager, peerSources, connectionManagers, _) = CreateManager();
         var session = await manager.AddAsync(RealTorrentFileSource(), null, true);
 
         peerSources[session.Id].TrackerPeersFound = 3;
@@ -182,7 +185,7 @@ public class NetworkedSessionManagerTests : IDisposable
     [Fact]
     public void GetNetworkStats_UnknownSession_ReturnsEmpty()
     {
-        var (manager, _, _) = CreateManager();
+        var (manager, _, _, _) = CreateManager();
 
         var stats = ((ITorrentRuntimeInfoProvider)manager).GetNetworkStats(Guid.NewGuid());
 
@@ -197,7 +200,7 @@ public class NetworkedSessionManagerTests : IDisposable
         // "running" — and its button looking disabled — for that entire window, even
         // after the user had already clicked Stop on the same torrent. StartAsync must
         // return promptly; the fetch continues in the background.
-        var (manager, _, _) = CreateManager();
+        var (manager, _, _, _) = CreateManager();
         var session = await manager.AddAsync(MagnetOnlySource(), null, false);
 
         var task = manager.StartAsync(session.Id);
@@ -209,7 +212,7 @@ public class NetworkedSessionManagerTests : IDisposable
     [Fact]
     public async Task StopAsync_WhileMetadataFetchStillPending_DoesNotResurrectTheRuntime()
     {
-        var (manager, _, connectionManagers) = CreateManager();
+        var (manager, _, connectionManagers, _) = CreateManager();
         var session = await manager.AddAsync(MagnetOnlySource(), null, false);
 
         await manager.StartAsync(session.Id);
@@ -220,5 +223,36 @@ public class NetworkedSessionManagerTests : IDisposable
         await Task.Delay(TimeSpan.FromMilliseconds(300));
 
         Assert.Equal(TorrentState.Stopped, session.State);
+    }
+
+    [Fact]
+    public async Task OnBlockReceived_CompletesPiece_UpdatesSessionProgress()
+    {
+        // Regression test: RarestFirstPieceManager clones session.PieceCompletion at
+        // construction and tracked completion purely internally from then on — a piece
+        // finishing and verifying never reached TorrentSession, so ProgressFraction (and
+        // therefore the UI's "downloaded" bytes) stayed stuck at 0% even while data was
+        // genuinely arriving and being written to disk. NetworkedSessionManager must wire
+        // the piece manager's PieceCompleted event to session.MarkPieceVerified.
+        var sourceDir = Path.Combine(_tempDir, "source");
+        Directory.CreateDirectory(sourceDir);
+        var sourceFile = Path.Combine(sourceDir, "content.bin");
+        var content = Enumerable.Range(0, 100).Select(b => (byte)b).ToArray();
+        await File.WriteAllBytesAsync(sourceFile, content);
+
+        var builtMetadata = Metadata.CreateFromPath(sourceFile);
+        using var torrentBytes = new MemoryStream();
+        builtMetadata.Save(torrentBytes);
+
+        var (manager, _, _, pieceManagers) = CreateManager();
+        var session = await manager.AddAsync(new TorrentAddSource.TorrentFile(torrentBytes.ToArray()), null, false);
+        await manager.StartAsync(session.Id);
+
+        var pieceManager = pieceManagers[session.Id];
+        var completed = pieceManager.OnBlockReceived(0, 0, content);
+
+        Assert.Equal(0, completed);
+        Assert.True(session.PieceCompletion[0]);
+        Assert.Equal(1.0, session.ProgressFraction);
     }
 }

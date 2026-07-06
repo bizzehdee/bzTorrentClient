@@ -241,6 +241,12 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         if (runtime.ConnectionManager is not null)
             runtime.PeerSource.PeerFound -= runtime.ConnectionManager.AddPeerCandidate;
 
+        // The piece manager clones session.PieceCompletion at construction and tracks
+        // completion internally from then on — without this, a piece finishing and
+        // verifying never reaches the session, so progress/"downloaded" stay stuck at
+        // 0% and Completed is never reached, even while data is genuinely arriving.
+        pieceManager.PieceCompleted += session.MarkPieceVerified;
+
         runtime.PieceManager = pieceManager;
         runtime.ConnectionManager = connectionManager;
         runtime.PeerSource.PeerFound += connectionManager.AddPeerCandidate;
