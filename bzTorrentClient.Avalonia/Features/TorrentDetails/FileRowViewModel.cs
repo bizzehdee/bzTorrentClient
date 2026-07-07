@@ -5,4 +5,7 @@ namespace bzTorrentClient.Avalonia.Features.TorrentDetails;
 /// toward every file it overlaps only once fully verified - the same approximation real
 /// torrent clients use, since completion isn't tracked at sub-piece resolution.
 /// </summary>
-public sealed record FileRowViewModel(string Filename, long FileSize, double ProgressPercent);
+public sealed record FileRowViewModel(string Filename, long FileSize, double ProgressPercent)
+{
+    public string FileSizeText => ByteFormat.Bytes(FileSize);
+}

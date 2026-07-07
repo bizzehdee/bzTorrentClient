@@ -1,4 +1,5 @@
 using bzTorrent.Data;
+using bzTorrentClient.Avalonia;
 using bzTorrentClient.Avalonia.Features.TorrentDetails;
 using bzTorrentClient.Avalonia.Tests.Testing;
 using bzTorrentClient.Engine.Networking;
@@ -147,5 +148,6 @@ public class TorrentDetailsViewModelTests : IDisposable
         var fileRow = Assert.Single(viewModel.Files);
         Assert.Equal("content.bin", fileRow.Filename);
         Assert.Equal(33.3, fileRow.ProgressPercent);
+        Assert.Equal(ByteFormat.Bytes(fileRow.FileSize), fileRow.FileSizeText);
     }
 }
