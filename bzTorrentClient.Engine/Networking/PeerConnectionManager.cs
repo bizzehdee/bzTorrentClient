@@ -170,7 +170,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         if (RunPeerConnectionOverTransport<UTPConnection>(peerId, endpoint, cancellationToken))
             return;
 
-        CleanUp(peerId);
+        CleanUp(peerId, endpoint);
     }
 
     /// <returns>
@@ -336,19 +336,31 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         finally
         {
             PeerWireSafety.SafeDisconnect(client);
-            CleanUp(peerId);
+            CleanUp(peerId, endpoint);
         }
 
         return true;
     }
 
-    private void CleanUp(int peerId)
+    /// <summary>
+    /// Also forgets <paramref name="endpoint"/> from <see cref="_knownPeers"/> - without this,
+    /// a peer that failed to connect or later disconnected could never be re-added as a
+    /// candidate, even though the tracker/DHT/PEX will keep re-announcing it every interval.
+    /// Left in place, that permanently shrinks the usable candidate pool over a long-running
+    /// session as every peer that's ever been tried (successfully or not) becomes unreachable.
+    /// </summary>
+    private void CleanUp(int peerId, IPEndPoint endpoint)
     {
         _activeClients.TryRemove(peerId, out _);
         _activeEndpoints.TryRemove(peerId, out _);
         _peerByteCounters.TryRemove(peerId, out _);
         _pieceManager.UnregisterPeer(peerId);
         _releaseConnections(1);
+
+        lock (_knownPeersLock)
+        {
+            _knownPeers.Remove($"{endpoint.Address}:{endpoint.Port}");
+        }
     }
 
     private sealed class PeerByteCounters

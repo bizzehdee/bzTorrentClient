@@ -137,6 +137,88 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
         Assert.True(elapsed >= TimeSpan.FromSeconds(1), $"Expected the rate limit to slow the download down; only took {elapsed.TotalMilliseconds}ms.");
     }
 
+    [Fact]
+    public async Task PeerConnectionManager_PeerDisconnectsThenReAdded_IsAllowedToReconnect()
+    {
+        var metadata = new FakeMetadata(
+            pieceCount: 1,
+            hashHex: InfoHashHex,
+            pieceSize: 32,
+            pieceHashes: new[] { new byte[20] },
+            files: new[] { new MetadataFileInfo { Id = 0, Filename = "payload.bin", FileStartByte = 0, FileSize = 32 } });
+
+        var tcpListener = new TcpListener(IPAddress.Loopback, 0);
+        tcpListener.Start();
+        var port = ((IPEndPoint)tcpListener.LocalEndpoint).Port;
+        var acceptCount = 0;
+        _ = Task.Run(() => RunDisconnectingSeederAsync(tcpListener, () => Interlocked.Increment(ref acceptCount)));
+
+        var storage = new FileSystemTorrentStorage(metadata, _leecherDir);
+        storage.EnsureAllocated();
+        var pieceManager = new RarestFirstPieceManager(metadata, storage);
+
+        using var connectionManager = new PeerConnectionManager(
+            metadata,
+            storage,
+            pieceManager,
+            LeecherPeerId,
+            maxConnectionsPerTorrent: 5,
+            tryReserveConnections: _ => true,
+            releaseConnections: _ => { });
+
+        connectionManager.Start();
+        var endpoint = new IPEndPoint(IPAddress.Loopback, port);
+        connectionManager.AddPeerCandidate(endpoint);
+
+        // Peer accepts, then immediately closes the connection - our own client should
+        // notice the disconnect and clean itself up.
+        var disconnected = await SpinUntilAsync(() => connectionManager.ActiveConnectionCount == 0 && Volatile.Read(ref acceptCount) >= 1, TimeSpan.FromSeconds(10));
+        Assert.True(disconnected, "Expected the first connection to be accepted and then cleaned up after the peer disconnected.");
+
+        // The same endpoint must be re-connectable - a peer that dropped once shouldn't be
+        // permanently unreachable for the rest of the session (e.g. re-announced by PEX/tracker/DHT later).
+        connectionManager.AddPeerCandidate(endpoint);
+        var reconnected = await SpinUntilAsync(() => Volatile.Read(ref acceptCount) >= 2, TimeSpan.FromSeconds(10));
+
+        connectionManager.Stop();
+        tcpListener.Stop();
+
+        Assert.True(reconnected, "Expected the endpoint to be retried after being re-added as a candidate.");
+    }
+
+    /// <summary>Accepts connections, completes the handshake, then disconnects immediately - simulating a peer that drops right away.</summary>
+    private static async Task RunDisconnectingSeederAsync(TcpListener listener, Action onAccepted)
+    {
+        while (true)
+        {
+            TcpClient candidate;
+            try
+            {
+                candidate = await listener.AcceptTcpClientAsync();
+            }
+            catch (Exception ex) when (ex is SocketException or ObjectDisposedException or InvalidOperationException)
+            {
+                return;
+            }
+
+            using var client = candidate;
+            using var stream = client.GetStream();
+
+            var incomingHandshake = new byte[68];
+            if (!await TryReadExactAsync(stream, incomingHandshake))
+            {
+                continue;
+            }
+
+            onAccepted();
+
+            var infoHash = new byte[20];
+            Array.Copy(incomingHandshake, 28, infoHash, 0, 20);
+            await stream.WriteAsync(BuildHandshake(infoHash, "-bz0001-seeder000000"));
+            // Disconnect immediately - no bitfield, no data.
+        }
+    }
+
     /// <summary>Minimal BEP-3 peer: handshake, send an all-ones bitfield, unchoke on Interested, serve one Request.</summary>
     private static Task RunRawSeederAsync(TcpListener listener, byte[] pieceData) =>
         RunRawSeederAsync(listener, pieceData, requestsToServe: 1);
