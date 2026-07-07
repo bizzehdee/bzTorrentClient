@@ -33,6 +33,10 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
                 GlobalMaxConnections = dto.GlobalMaxConnections > 0 ? dto.GlobalMaxConnections : new ClientSettings().GlobalMaxConnections,
                 MaxConnectionsPerTorrent = dto.MaxConnectionsPerTorrent > 0 ? dto.MaxConnectionsPerTorrent : new ClientSettings().MaxConnectionsPerTorrent,
                 ListenPort = dto.ListenPort is > 0 and <= 65535 ? dto.ListenPort : new ClientSettings().ListenPort,
+                // Nullable in the DTO (see EnableDht) so a settings file saved before these
+                // existed reads as the default rather than false.
+                RandomiseListenPortOnStartup = dto.RandomiseListenPortOnStartup ?? false,
+                EnableUpnpPortForwarding = dto.EnableUpnpPortForwarding ?? false,
                 // Unlike the settings above, zero is a valid, meaningful value here
                 // ("unlimited") rather than "unset" — only clamp genuinely invalid negatives.
                 GlobalDownloadLimitBytesPerSecond = Math.Max(0, dto.GlobalDownloadLimitBytesPerSecond),
@@ -74,6 +78,8 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
             GlobalMaxConnections = settings.GlobalMaxConnections,
             MaxConnectionsPerTorrent = settings.MaxConnectionsPerTorrent,
             ListenPort = settings.ListenPort,
+            RandomiseListenPortOnStartup = settings.RandomiseListenPortOnStartup,
+            EnableUpnpPortForwarding = settings.EnableUpnpPortForwarding,
             GlobalDownloadLimitBytesPerSecond = settings.GlobalDownloadLimitBytesPerSecond,
             GlobalUploadLimitBytesPerSecond = settings.GlobalUploadLimitBytesPerSecond,
             DefaultTrackerListUrl = settings.DefaultTrackerListUrl,
@@ -108,6 +114,8 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
         public int GlobalMaxConnections { get; set; }
         public int MaxConnectionsPerTorrent { get; set; }
         public int ListenPort { get; set; }
+        public bool? RandomiseListenPortOnStartup { get; set; }
+        public bool? EnableUpnpPortForwarding { get; set; }
         public long GlobalDownloadLimitBytesPerSecond { get; set; }
         public long GlobalUploadLimitBytesPerSecond { get; set; }
         public string DefaultTrackerListUrl { get; set; } = string.Empty;

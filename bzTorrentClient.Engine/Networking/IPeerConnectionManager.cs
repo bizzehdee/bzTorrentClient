@@ -1,4 +1,5 @@
 using System.Net;
+using bzTorrent;
 
 namespace bzTorrentClient.Engine.Networking;
 
@@ -18,6 +19,13 @@ public interface IPeerConnectionManager : IDisposable
     long BytesUploaded { get; }
 
     void AddPeerCandidate(IPEndPoint endpoint);
+
+    /// <summary>
+    /// Adopts an inbound peer connection whose handshake has already been read (so the
+    /// listener could route it to this torrent). Sends our handshake and then serves/leeches
+    /// over the shared peer loop. Runs inline until the connection ends.
+    /// </summary>
+    void AcceptInbound(IPeerWireClient client, IPEndPoint remoteEndpoint);
 
     void Start();
 

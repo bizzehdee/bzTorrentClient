@@ -58,6 +58,12 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     private static readonly TimeSpan DefaultSeedingPolicyCheckInterval = TimeSpan.FromSeconds(5);
     private readonly Timer _seedingPolicyTimer;
 
+    // Accepts incoming peer connections on the listen port and routes them to the matching
+    // torrent. Null when inbound listening is disabled (e.g. under test). Started lazily the
+    // first time a torrent's runtime is built, so the port isn't bound until networking runs.
+    private readonly InboundPeerListener? _inboundListener;
+    private bool _inboundListenerStarted;
+
     public NetworkedSessionManager(
         ISessionManager inner,
         IClientSettings settings,
@@ -69,7 +75,8 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         IDefaultTrackerListProvider? defaultTrackerListProvider = null,
         TimeSpan? seedingPolicyCheckInterval = null,
         IDebugLogger? logger = null,
-        IIpBlocklistProvider? ipBlocklistProvider = null)
+        IIpBlocklistProvider? ipBlocklistProvider = null,
+        bool enableInboundListener = false)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -93,6 +100,64 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
             null,
             checkInterval,
             checkInterval);
+
+        if (enableInboundListener)
+        {
+            _inboundListener = new InboundPeerListener(
+                _localPeerId,
+                _settings.EncryptionMode,
+                ResolveConnectionManagerForInfoHash,
+                GetActiveInfoHashes,
+                _logger);
+        }
+    }
+
+    /// <summary>Finds the running torrent whose info-hash matches, so an inbound peer can be routed to it. Only matches torrents with a live runtime (started, not stopped).</summary>
+    private IPeerConnectionManager? ResolveConnectionManagerForInfoHash(string infoHash)
+    {
+        lock (_runtimesLock)
+        {
+            foreach (var (sessionId, runtime) in _runtimes)
+            {
+                if (runtime.ConnectionManager is not { } connectionManager)
+                    continue;
+
+                var session = _inner.Sessions.FirstOrDefault(s => s.Id == sessionId);
+                if (session is not null && string.Equals(session.Metadata.HashString, infoHash, StringComparison.OrdinalIgnoreCase))
+                    return connectionManager;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The info-hashes of every torrent with a live runtime, for MSE handshake decryption on accepted connections.</summary>
+    private IReadOnlyCollection<string> GetActiveInfoHashes()
+    {
+        lock (_runtimesLock)
+        {
+            var runtimeSessionIds = _runtimes.Keys.ToHashSet();
+            return _inner.Sessions
+                .Where(session => runtimeSessionIds.Contains(session.Id))
+                .Select(session => session.Metadata.HashString)
+                .ToArray();
+        }
+    }
+
+    /// <summary>Starts the inbound peer listener once, the first time any torrent begins networking (so the listen port isn't bound until it's actually needed). No-op when inbound listening is disabled.</summary>
+    private void EnsureInboundListenerStarted()
+    {
+        if (_inboundListener is null)
+            return;
+
+        lock (_runtimesLock)
+        {
+            if (_inboundListenerStarted)
+                return;
+            _inboundListenerStarted = true;
+        }
+
+        _inboundListener.Start(_settings.ListenPort);
     }
 
     public IReadOnlyCollection<TorrentSession> Sessions => _inner.Sessions;
@@ -202,6 +267,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
 
         var runtime = GetOrCreateRuntime(session);
         runtime.PeerSource.Start();
+        EnsureInboundListenerStarted();
 
         if (session.Metadata.PieceHashes.Count == 0 && session.Metadata is Metadata concreteMetadata)
         {
@@ -348,6 +414,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     public void Dispose()
     {
         _seedingPolicyTimer.Dispose();
+        _inboundListener?.Dispose();
 
         lock (_runtimesLock)
         {

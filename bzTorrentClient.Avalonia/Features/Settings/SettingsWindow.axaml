@@ -68,6 +68,9 @@
                                     <NumericUpDown Value="{Binding ListenPort}" Minimum="1" Maximum="65535" Increment="1" FormatString="0"/>
                                 </StackPanel>
 
+                                <CheckBox Content="Randomise listen port on startup" IsChecked="{Binding RandomiseListenPortOnStartup}"/>
+                                <CheckBox Content="Forward listen port via UPnP" IsChecked="{Binding EnableUpnpPortForwarding}"/>
+
                             </StackPanel>
                         </Border>
 

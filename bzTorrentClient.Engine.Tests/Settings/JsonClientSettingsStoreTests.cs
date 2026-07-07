@@ -34,6 +34,8 @@ public class JsonClientSettingsStoreTests : IDisposable
             GlobalMaxConnections = 42,
             MaxConnectionsPerTorrent = 7,
             ListenPort = 12345,
+            RandomiseListenPortOnStartup = true,
+            EnableUpnpPortForwarding = true,
             GlobalDownloadLimitBytesPerSecond = 512_000,
             GlobalUploadLimitBytesPerSecond = 128_000,
             DefaultTrackerListUrl = "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best_ip.txt",
@@ -61,6 +63,8 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.Equal(42, reloaded.GlobalMaxConnections);
         Assert.Equal(7, reloaded.MaxConnectionsPerTorrent);
         Assert.Equal(12345, reloaded.ListenPort);
+        Assert.True(reloaded.RandomiseListenPortOnStartup);
+        Assert.True(reloaded.EnableUpnpPortForwarding);
         Assert.Equal(512_000, reloaded.GlobalDownloadLimitBytesPerSecond);
         Assert.Equal(128_000, reloaded.GlobalUploadLimitBytesPerSecond);
         Assert.Equal(settings.DefaultTrackerListUrl, reloaded.DefaultTrackerListUrl);
@@ -154,6 +158,20 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.True(settings.EnableDht);
         Assert.True(settings.EnablePex);
         Assert.True(settings.EnableLpd);
+    }
+
+    [Fact]
+    public void Load_SettingsFileFromBeforePortTogglesExisted_DefaultsToFalse()
+    {
+        // Port randomisation and UPnP are opt-in, so an older settings.json without the keys
+        // must come back with both off rather than surprising the user by enabling them.
+        File.WriteAllText(_filePath, "{ \"DefaultDownloadDirectory\": \"/downloads\" }");
+        var store = new JsonClientSettingsStore(_filePath);
+
+        var settings = store.Load();
+
+        Assert.False(settings.RandomiseListenPortOnStartup);
+        Assert.False(settings.EnableUpnpPortForwarding);
     }
 
     [Fact]

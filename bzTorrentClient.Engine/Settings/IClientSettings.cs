@@ -10,6 +10,22 @@ public interface IClientSettings
     int MaxConnectionsPerTorrent { get; set; }
     int ListenPort { get; set; }
 
+    /// <summary>
+    /// When set, a fresh random listen port (49152-65535, the IANA dynamic/ephemeral range)
+    /// is chosen on each startup instead of using <see cref="ListenPort"/> as-is - handy for
+    /// dodging ISP port-based throttling. The chosen port is used for this run only and is
+    /// not written back over the configured <see cref="ListenPort"/>. Default false.
+    /// </summary>
+    bool RandomiseListenPortOnStartup { get; set; }
+
+    /// <summary>
+    /// When set, the app asks the router (via UPnP-IGD or NAT-PMP/PCP) to forward the listen
+    /// port - both TCP and UDP - to this machine on startup, and removes the mapping on exit.
+    /// Best-effort: a router without the feature (or with it disabled) simply leaves the port
+    /// unforwarded. Default false.
+    /// </summary>
+    bool EnableUpnpPortForwarding { get; set; }
+
     /// <summary>Global download throughput cap in bytes/second, shared across every torrent. Zero or less means unlimited.</summary>
     long GlobalDownloadLimitBytesPerSecond { get; set; }
 

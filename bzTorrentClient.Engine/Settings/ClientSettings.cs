@@ -9,6 +9,8 @@ public sealed class ClientSettings : IClientSettings
     public int GlobalMaxConnections { get; set; } = 200;
     public int MaxConnectionsPerTorrent { get; set; } = 50;
     public int ListenPort { get; set; } = 6881;
+    public bool RandomiseListenPortOnStartup { get; set; }
+    public bool EnableUpnpPortForwarding { get; set; }
     public long GlobalDownloadLimitBytesPerSecond { get; set; }
     public long GlobalUploadLimitBytesPerSecond { get; set; }
     public string DefaultTrackerListUrl { get; set; } = string.Empty;

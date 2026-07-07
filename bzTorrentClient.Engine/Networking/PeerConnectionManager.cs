@@ -199,10 +199,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
     private bool RunPeerConnectionOverTransport<TSocket>(int peerId, IPEndPoint endpoint, CancellationToken cancellationToken)
         where TSocket : ISocket, new()
     {
-        var choked = true;
-        var inflight = 0;
-        var peerBitfield = new bool[_metadata.PieceHashes.Count];
-        var connectedAt = DateTime.UtcNow;
+        var state = new PeerLoopState(_metadata.PieceHashes.Count);
 
         // A large share of real-world peers require or strongly prefer MSE/PE-encrypted
         // connections (many ISPs throttle/block plaintext BitTorrent traffic) — PlainText
@@ -216,7 +213,130 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         _activeClients[peerId] = client;
 
         var transport = typeof(TSocket) == typeof(UTPConnection) ? PeerTransportKind.Utp : PeerTransportKind.Tcp;
+        var pex = WirePeerHandlers(peerId, client, endpoint, transport, state);
 
+        var connectedAt = DateTime.UtcNow;
+        try
+        {
+            client.Connect(endpoint);
+        }
+        catch (Exception ex) when (ex is SocketException or IOException)
+        {
+            // Didn't even connect - leave peerId's registration alone (no handshake ever
+            // happened, nothing to unwind) so the caller can retry it over another transport.
+            return false;
+        }
+
+        try
+        {
+            client.Handshake(_metadata.HashString, _localPeerId);
+            RunProcessLoop(peerId, client, endpoint, state, pex, connectedAt, cancellationToken);
+        }
+        catch (Exception ex) when (ex is SocketException or IOException)
+        {
+            // Peer connection dropped; fall through to cleanup below.
+        }
+        finally
+        {
+            PeerWireSafety.SafeDisconnect(client);
+            CleanUp(peerId, endpoint);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Adopts an inbound peer connection whose BitTorrent handshake has already been read by
+    /// the listener (that read is how the listener knew which torrent - and therefore which
+    /// connection manager - the connection belongs to). Sends our half of the handshake,
+    /// then serves/leeches over the same event loop as an outbound connection. Runs the loop
+    /// inline on the caller's thread (the listener already gives each accepted peer its own
+    /// task), so it blocks until the connection ends.
+    /// </summary>
+    public void AcceptInbound(IPeerWireClient client, IPEndPoint remoteEndpoint)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(remoteEndpoint);
+
+        // The shared loop needs the concrete client's handshake state; the listener always
+        // hands us a PeerWireClient, so this only fails on misuse.
+        if (client is not PeerWireClient concreteClient)
+        {
+            PeerWireSafety.SafeDisconnect(client);
+            return;
+        }
+
+        // Only accept while running: a paused/stopped torrent has torn down (or never had) a
+        // dispatch loop, so it must not silently start serving an inbound peer.
+        var cts = _cts;
+        if (cts is null)
+        {
+            PeerWireSafety.SafeDisconnect(client);
+            return;
+        }
+
+        // Inbound peers go through the same blocklist gate as outbound candidates.
+        if (_ipBlocklist.IsBlocked(remoteEndpoint.Address))
+        {
+            PeerWireSafety.SafeDisconnect(client);
+            return;
+        }
+
+        if (_activeClients.Count >= _maxConnectionsPerTorrent || !_tryReserveConnections(1))
+        {
+            PeerWireSafety.SafeDisconnect(client);
+            return;
+        }
+
+        var peerId = Interlocked.Increment(ref _nextPeerId);
+        var state = new PeerLoopState(_metadata.PieceHashes.Count);
+        _activeClients[peerId] = concreteClient;
+
+        // Inbound is always TCP: uTP has no passive-open, so the listener only accepts TCP.
+        var pex = WirePeerHandlers(peerId, concreteClient, remoteEndpoint, PeerTransportKind.Tcp, state);
+
+        try
+        {
+            // The peer's handshake already arrived (so HandshakeComplete won't fire again) —
+            // do what its handler would have, then send our half so the peer proceeds to
+            // exchange bitfields and data.
+            _activeEndpoints[peerId] = remoteEndpoint;
+            _peerByteCounters.GetOrAdd(peerId, _ => new PeerByteCounters()).Transport = PeerTransportKind.Tcp;
+            concreteClient.Handshake(_metadata.HashString, _localPeerId);
+            SendOurBitfield(concreteClient);
+            concreteClient.SendInterested();
+
+            RunProcessLoop(peerId, concreteClient, remoteEndpoint, state, pex, DateTime.UtcNow, cts.Token);
+        }
+        catch (Exception ex) when (ex is SocketException or IOException)
+        {
+            // Peer connection dropped; fall through to cleanup below.
+        }
+        finally
+        {
+            PeerWireSafety.SafeDisconnect(client);
+            CleanUp(peerId, remoteEndpoint);
+        }
+    }
+
+    /// <summary>Per-connection mutable state shared between the message handlers and the process loop.</summary>
+    private sealed class PeerLoopState
+    {
+        public bool Choked = true;
+        public int Inflight;
+        public readonly bool[] PeerBitfield;
+
+        public PeerLoopState(int pieceCount) => PeerBitfield = new bool[pieceCount];
+    }
+
+    /// <summary>
+    /// Attaches every peer-wire message handler (bitfield/have/choke/request/piece/PEX) plus
+    /// the HandshakeComplete hook that marks the peer connected and sends our bitfield/interest.
+    /// Shared by the outbound and inbound connection paths. Returns the PEX extension (if any)
+    /// so the caller's loop can drive periodic PEX broadcasts.
+    /// </summary>
+    private UTPeerExchange? WirePeerHandlers(int peerId, PeerWireClient client, IPEndPoint endpoint, PeerTransportKind transport, PeerLoopState state)
+    {
         client.HandshakeComplete += pwc =>
         {
             // Only now does this peer count as "connected" for ConnectedPeers/the UI's Peers
@@ -234,20 +354,20 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
 
         client.BitField += (pwc, _, bitfield) =>
         {
-            Array.Copy(bitfield, peerBitfield, Math.Min(bitfield.Length, peerBitfield.Length));
-            _pieceManager.RegisterPeerBitfield(peerId, peerBitfield);
+            Array.Copy(bitfield, state.PeerBitfield, Math.Min(bitfield.Length, state.PeerBitfield.Length));
+            _pieceManager.RegisterPeerBitfield(peerId, state.PeerBitfield);
             pwc.SendInterested();
         };
 
         client.Have += (_, index) =>
         {
-            if (index >= 0 && index < peerBitfield.Length)
-                peerBitfield[index] = true;
+            if (index >= 0 && index < state.PeerBitfield.Length)
+                state.PeerBitfield[index] = true;
             _pieceManager.RegisterPeerHave(peerId, index);
         };
 
-        client.UnChoke += _ => choked = false;
-        client.Choke += _ => choked = true;
+        client.UnChoke += _ => state.Choked = false;
+        client.Choke += _ => state.Choked = true;
         client.Interested += pwc => pwc.SendUnChoke();
 
         client.Request += (pwc, index, start, length) =>
@@ -281,7 +401,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
 
         client.Piece += (_, index, start, buffer) =>
         {
-            inflight = Math.Max(0, inflight - 1);
+            state.Inflight = Math.Max(0, state.Inflight - 1);
             Interlocked.Add(ref _bytesDownloaded, buffer.Length);
             Interlocked.Add(ref _peerByteCounters.GetOrAdd(peerId, _ => new PeerByteCounters()).BytesDownloaded, buffer.Length);
             var completedPiece = _pieceManager.OnBlockReceived(index, start, buffer);
@@ -307,63 +427,48 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
             client.RegisterBTExtension(extendedProtocol);
         }
 
-        try
-        {
-            client.Connect(endpoint);
-        }
-        catch (Exception ex) when (ex is SocketException or IOException)
-        {
-            // Didn't even connect - leave peerId's registration alone (no handshake ever
-            // happened, nothing to unwind) so the caller can retry it over another transport.
-            return false;
-        }
+        return pex;
+    }
 
-        try
-        {
-            client.Handshake(_metadata.HashString, _localPeerId);
-            var lastPexBroadcast = DateTime.MinValue;
+    /// <summary>
+    /// Pumps the peer connection: services incoming messages, keeps up to
+    /// <see cref="MaxRequestsInFlight"/> block requests outstanding while unchoked and within
+    /// the download budget, and broadcasts PEX periodically, until the connection drops or is
+    /// cancelled. Shared by the outbound and inbound paths.
+    /// </summary>
+    private void RunProcessLoop(int peerId, PeerWireClient client, IPEndPoint endpoint, PeerLoopState state, UTPeerExchange? pex, DateTime connectedAt, CancellationToken cancellationToken)
+    {
+        var lastPexBroadcast = DateTime.MinValue;
 
-            while (!cancellationToken.IsCancellationRequested && client.Process())
+        while (!cancellationToken.IsCancellationRequested && client.Process())
+        {
+            if (!client.ReceivedHandshake && connectedAt < DateTime.UtcNow.AddSeconds(-HandshakeTimeoutSeconds))
             {
-                if (!client.ReceivedHandshake && connectedAt < DateTime.UtcNow.AddSeconds(-HandshakeTimeoutSeconds))
-                {
-                    PeerWireSafety.SafeDisconnect(client);
-                    break;
-                }
-
-                // Checked before TryGetNextRequest, not after: that call marks whatever
-                // block it returns as requested, so a block declined here for lack of
-                // download budget would never get re-offered — it'd just silently stall.
-                if (!choked && inflight < MaxRequestsInFlight && _downloadLimiter.TryConsume(TypicalBlockSize))
-                {
-                    var request = _pieceManager.TryGetNextRequest(peerId, peerBitfield);
-                    if (request is not null)
-                    {
-                        client.SendRequest((uint)request.PieceIndex, (uint)request.BlockOffset, (uint)request.Length);
-                        inflight++;
-                    }
-                }
-
-                if (pex is not null && client.ReceivedHandshake && DateTime.UtcNow - lastPexBroadcast > PexBroadcastInterval)
-                {
-                    lastPexBroadcast = DateTime.UtcNow;
-                    BroadcastPex(client, pex, endpoint);
-                }
-
-                Thread.Sleep(10);
+                PeerWireSafety.SafeDisconnect(client);
+                break;
             }
-        }
-        catch (Exception ex) when (ex is SocketException or IOException)
-        {
-            // Peer connection dropped; fall through to cleanup below.
-        }
-        finally
-        {
-            PeerWireSafety.SafeDisconnect(client);
-            CleanUp(peerId, endpoint);
-        }
 
-        return true;
+            // Checked before TryGetNextRequest, not after: that call marks whatever
+            // block it returns as requested, so a block declined here for lack of
+            // download budget would never get re-offered — it'd just silently stall.
+            if (!state.Choked && state.Inflight < MaxRequestsInFlight && _downloadLimiter.TryConsume(TypicalBlockSize))
+            {
+                var request = _pieceManager.TryGetNextRequest(peerId, state.PeerBitfield);
+                if (request is not null)
+                {
+                    client.SendRequest((uint)request.PieceIndex, (uint)request.BlockOffset, (uint)request.Length);
+                    state.Inflight++;
+                }
+            }
+
+            if (pex is { } pexExtension && client.ReceivedHandshake && DateTime.UtcNow - lastPexBroadcast > PexBroadcastInterval)
+            {
+                lastPexBroadcast = DateTime.UtcNow;
+                BroadcastPex(client, pexExtension, endpoint);
+            }
+
+            Thread.Sleep(10);
+        }
     }
 
     /// <summary>

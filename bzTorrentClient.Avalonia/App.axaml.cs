@@ -47,6 +47,12 @@ public partial class App : Application
             _settings = settings;
             ApplyTheme(settings);
 
+            // Pick a fresh listen port for this run if asked - done here, before anything reads
+            // settings.ListenPort (the session manager below, and the UPnP mapper), and left in
+            // memory only so the configured port isn't overwritten.
+            if (settings.RandomiseListenPortOnStartup)
+                settings.ListenPort = PickRandomListenPort();
+
             var dbOptions = new DbContextOptionsBuilder<BzTorrentClientDbContext>()
                 .UseSqlite($"Data Source={Path.Combine(appDataDirectory, "sessions.db")}")
                 .Options;
@@ -58,6 +64,16 @@ public partial class App : Application
             }
 
             var logger = new FileDebugLogger(settings.LogDirectory, settings.LogMaxFileSizeBytes, TimeSpan.FromDays(settings.LogMaxAgeDays));
+
+            // Best-effort router port forwarding (TCP + UDP) for the listen port. Started here
+            // and torn down in the shutdown handler below; a router that can't/won't forward is
+            // logged and ignored.
+            UpnpPortMapper? upnpPortMapper = null;
+            if (settings.EnableUpnpPortForwarding)
+            {
+                upnpPortMapper = new UpnpPortMapper(logger);
+                upnpPortMapper.Start(settings.ListenPort);
+            }
 
             var sessionStore = new EfSessionStore(dbOptions);
             var plainSessionManager = new SessionManager(sessionStore, settings);
@@ -73,7 +89,8 @@ public partial class App : Application
                 GenerateLocalPeerId(),
                 defaultTrackerListProvider: defaultTrackerListProvider,
                 logger: logger,
-                ipBlocklistProvider: ipBlocklistProvider);
+                ipBlocklistProvider: ipBlocklistProvider,
+                enableInboundListener: true);
             var addPipeline = new TorrentAddPipeline(sessionManager);
 
             var mainWindowViewModel = new MainWindowViewModel(sessionManager, addPipeline, settings, settingsStore);
@@ -83,7 +100,11 @@ public partial class App : Application
                 DataContext = mainWindowViewModel,
             };
 
-            desktop.ShutdownRequested += (_, _) => sessionManager.Dispose();
+            desktop.ShutdownRequested += (_, _) =>
+            {
+                upnpPortMapper?.Dispose();
+                sessionManager.Dispose();
+            };
 
             _ = mainWindowViewModel.InitializeAsync();
         }
@@ -167,6 +188,11 @@ public partial class App : Application
             return null;
         }
     }
+
+    /// <summary>A port from the IANA dynamic/ephemeral range (49152-65535), avoiding the
+    /// well-known and registered ranges so a randomised listen port doesn't collide with a
+    /// service port.</summary>
+    private static int PickRandomListenPort() => new Random().Next(49152, 65536);
 
     private static string GenerateLocalPeerId()
     {
