@@ -45,6 +45,12 @@ jobs:
     permissions:
       contents: write
 
+    env:
+      APP_ID: io.github.bizzehdee.bzTorrentClient
+      # Published apphost name (defaults to the project name); used by the launchers.
+      APP_EXE: bzTorrentClient.Avalonia
+      PROJECT: bzTorrentClient.Avalonia/bzTorrentClient.Avalonia.csproj
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,23 +62,117 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # Version is the build date as YY.MM.DD, patched into the assembly and every artifact name.
+      - name: Compute version
+        run: |
+          echo "VERSION=$(date +%y.%m.%d)" >> "$GITHUB_ENV"
+          echo "RELEASE_DATE=$(date +%F)" >> "$GITHUB_ENV"
+
       - name: Publish win-x64
-        run: dotnet publish bzTorrentClient.Avalonia/bzTorrentClient.Avalonia.csproj --configuration Release --runtime win-x64 --self-contained true --output publish/win-x64
+        run: dotnet publish "$PROJECT" --configuration Release --runtime win-x64 --self-contained true -p:Version=$VERSION --output publish/win-x64
 
       - name: Publish linux-x64
-        run: dotnet publish bzTorrentClient.Avalonia/bzTorrentClient.Avalonia.csproj --configuration Release --runtime linux-x64 --self-contained true --output publish/linux-x64
+        run: dotnet publish "$PROJECT" --configuration Release --runtime linux-x64 --self-contained true -p:Version=$VERSION --output publish/linux-x64
 
-      - name: Zip release artifacts
+      - name: Zip self-contained builds
         run: |
-          (cd publish/win-x64 && zip -r ../../bzTorrentClient-win-x64.zip .)
-          (cd publish/linux-x64 && zip -r ../../bzTorrentClient-linux-x64.zip .)
+          (cd publish/win-x64 && zip -r "$GITHUB_WORKSPACE/bzTorrentClient-$VERSION-win-x64.zip" .)
+          (cd publish/linux-x64 && zip -r "$GITHUB_WORKSPACE/bzTorrentClient-$VERSION-linux-x64.zip" .)
+
+      # ---- Shared packaging assets (icon + versioned metainfo) ----
+      - name: Prepare packaging assets
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y icoutils imagemagick
+          # Extract the largest frame from the .ico and render a 256x256 PNG named after the app id.
+          icotool -x bzTorrentClient.Avalonia/Assets/avalonia-logo.ico
+          convert "$(ls -S avalonia-logo_*.png | head -1)" -resize '256x256!' "$APP_ID.png"
+          # Stamp the release into the AppStream metainfo.
+          sed -e "s/@VERSION@/$VERSION/" -e "s/@DATE@/$RELEASE_DATE/" \
+            packaging/linux/$APP_ID.metainfo.xml > "$APP_ID.metainfo.xml"
+
+      # ---- .deb and .rpm (via fpm, from one staged /usr tree) ----
+      - name: Build .deb and .rpm
+        run: |
+          sudo apt-get install -y rpm
+          sudo gem install --no-document fpm
+
+          # Stage a FHS tree: self-contained app under /usr/lib, a launcher on PATH,
+          # plus the desktop entry, icon and metainfo for desktop integration.
+          stage=stage-linux
+          mkdir -p "$stage/usr/lib/bztorrent-client" "$stage/usr/bin"
+          cp -r publish/linux-x64/. "$stage/usr/lib/bztorrent-client/"
+          cat > "$stage/usr/bin/bztorrent-client" <<EOF
+          #!/bin/sh
+          exec /usr/lib/bztorrent-client/$APP_EXE "\$@"
+          EOF
+          chmod 755 "$stage/usr/bin/bztorrent-client"
+          install -Dm644 packaging/linux/$APP_ID.desktop "$stage/usr/share/applications/$APP_ID.desktop"
+          install -Dm644 "$APP_ID.png" "$stage/usr/share/icons/hicolor/256x256/apps/$APP_ID.png"
+          install -Dm644 "$APP_ID.metainfo.xml" "$stage/usr/share/metainfo/$APP_ID.metainfo.xml"
+
+          common=(-s dir -n bztorrent-client -v "$VERSION"
+            --license "GPL-3.0-or-later"
+            --maintainer "Darren Horrocks <killallthehumans@gmail.com>"
+            --url "https://github.com/bizzehdee/bzTorrentClient"
+            --description "A desktop BitTorrent client."
+            --category net -C "$stage")
+
+          fpm "${common[@]}" -t deb --architecture amd64 \
+            --depends libc6 --depends libx11-6 --depends libfontconfig1 \
+            --depends libice6 --depends libsm6 --depends libgl1 \
+            -p "bzTorrentClient-$VERSION-amd64.deb" usr
+
+          fpm "${common[@]}" -t rpm --architecture x86_64 \
+            --depends libX11 --depends fontconfig --depends libICE \
+            --depends libSM --depends mesa-libGL \
+            -p "bzTorrentClient-$VERSION-x86_64.rpm" usr
+
+      # ---- Flatpak bundle ----
+      # Best-effort: a Flatpak toolchain hiccup on the runner must not drop the
+      # other artifacts, so these steps are allowed to fail without failing the job.
+      - name: Install Flatpak toolchain
+        id: flatpak_tools
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+
+      - name: Build Flatpak bundle
+        id: flatpak_build
+        if: steps.flatpak_tools.outcome == 'success'
+        continue-on-error: true
+        run: |
+          # Stage everything the manifest's `dir` source copies in.
+          staging=packaging/linux/flatpak-staging
+          mkdir -p "$staging/app"
+          cp -r publish/linux-x64/. "$staging/app/"
+          cat > "$staging/bztorrent-client" <<EOF
+          #!/bin/sh
+          exec /app/lib/bztorrent-client/$APP_EXE "\$@"
+          EOF
+          chmod 755 "$staging/bztorrent-client"
+          cp packaging/linux/$APP_ID.desktop "$staging/"
+          cp "$APP_ID.png" "$staging/"
+          cp "$APP_ID.metainfo.xml" "$staging/"
+
+          flatpak-builder --user --force-clean --disable-rofiles-fuse \
+            --repo=flatpak-repo flatpak-build-dir \
+            packaging/linux/$APP_ID.yml
+          flatpak build-bundle flatpak-repo "bzTorrentClient-$VERSION-x86_64.flatpak" \
+            "$APP_ID" --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
       - name: Publish CI release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ci-latest
           name: CI
-          body: latest build
+          body: "Automated build ${{ env.VERSION }}"
+          fail_on_unmatched_files: false
           files: |
-            bzTorrentClient-win-x64.zip
-            bzTorrentClient-linux-x64.zip
+            bzTorrentClient-*-win-x64.zip
+            bzTorrentClient-*-linux-x64.zip
+            bzTorrentClient-*-amd64.deb
+            bzTorrentClient-*-x86_64.rpm
+            bzTorrentClient-*-x86_64.flatpak

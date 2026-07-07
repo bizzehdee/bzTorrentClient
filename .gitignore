@@ -11,3 +11,5 @@ TestResults
 *.DotSettings.user
 .idea/*
 *.user
+# CI-generated Flatpak staging tree
+packaging/linux/flatpak-staging/

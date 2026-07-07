@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=bzTorrent Client
+GenericName=BitTorrent Client
+Comment=A desktop BitTorrent client
+Exec=bztorrent-client %U
+Icon=io.github.bizzehdee.bzTorrentClient
+Terminal=false
+Categories=Network;FileTransfer;P2P;
+Keywords=torrent;bittorrent;p2p;download;magnet;
+StartupNotify=true
+StartupWMClass=bzTorrentClient.Avalonia

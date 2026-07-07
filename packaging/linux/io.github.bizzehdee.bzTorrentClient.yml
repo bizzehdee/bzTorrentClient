@@ -1,0 +1,33 @@
+# Flatpak manifest for bzTorrent Client.
+#
+# This does NOT build from source inside the sandbox (the .NET SDK isn't part of
+# the freedesktop runtime and the sandbox has no network at build time). Instead
+# CI publishes a self-contained linux-x64 build and stages it, plus the launcher,
+# desktop file, icon and metainfo, under packaging/linux/flatpak-staging/, which
+# this single `dir` source copies in.
+app-id: io.github.bizzehdee.bzTorrentClient
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: bztorrent-client
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=xdg-download
+  - --filesystem=home
+modules:
+  - name: bztorrent-client
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/bztorrent-client
+      - cp -r app/. /app/lib/bztorrent-client/
+      - install -Dm755 bztorrent-client /app/bin/bztorrent-client
+      - install -Dm644 io.github.bizzehdee.bzTorrentClient.desktop /app/share/applications/io.github.bizzehdee.bzTorrentClient.desktop
+      - install -Dm644 io.github.bizzehdee.bzTorrentClient.png /app/share/icons/hicolor/256x256/apps/io.github.bizzehdee.bzTorrentClient.png
+      - install -Dm644 io.github.bizzehdee.bzTorrentClient.metainfo.xml /app/share/metainfo/io.github.bizzehdee.bzTorrentClient.metainfo.xml
+    sources:
+      - type: dir
+        path: flatpak-staging

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.bizzehdee.bzTorrentClient</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>bzTorrent Client</name>
+  <developer_name>Darren Horrocks</developer_name>
+  <summary>A desktop BitTorrent client</summary>
+  <description>
+    <p>
+      A desktop BitTorrent client for Windows and Linux, built with Avalonia on
+      top of the bzTorrent protocol library.
+    </p>
+    <ul>
+      <li>Manages multiple torrents at once, each with several peer connections.</li>
+      <li>Adds torrents by .torrent file, magnet link, or info-hash.</li>
+      <li>Discovers peers via trackers, DHT, PEX (BEP-11), and LAN (LPD).</li>
+      <li>Lets you choose a download directory per torrent.</li>
+      <li>Remembers your torrents and their progress between runs.</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.bizzehdee.bzTorrentClient.desktop</launchable>
+  <url type="homepage">https://github.com/bizzehdee/bzTorrentClient</url>
+  <url type="bugtracker">https://github.com/bizzehdee/bzTorrentClient/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>
