@@ -1,4 +1,5 @@
 using bzTorrent.IO;
+using bzTorrentClient.Engine.Sessions;
 
 namespace bzTorrentClient.Engine.Settings;
 
@@ -59,4 +60,7 @@ public interface IClientSettings
     /// refuses any connection that won't encrypt. Default PreferEncryption.
     /// </summary>
     PeerEncryptionMode EncryptionMode { get; set; }
+
+    /// <summary>The state a newly added torrent lands in by default (Paused/Started/Stopped). Default Paused.</summary>
+    AddTorrentState DefaultAddTorrentState { get; set; }
 }

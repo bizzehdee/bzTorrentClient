@@ -94,11 +94,11 @@ public class AddTorrentViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task AddCommand_StartPausedTrue_SessionLandsPaused()
+    public async Task AddCommand_StatePaused_SessionLandsPaused()
     {
         var (viewModel, sessionManager) = Create();
         viewModel.Input = "0123456789abcdef0123456789abcdef01234567";
-        viewModel.StartPaused = true;
+        viewModel.State = AddTorrentState.Paused;
 
         await viewModel.AddCommand.ExecuteAsync(null);
 
@@ -106,14 +106,38 @@ public class AddTorrentViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task AddCommand_StartPausedFalse_SessionStartsImmediately()
+    public async Task AddCommand_StateStarted_SessionStartsImmediately()
     {
         var (viewModel, sessionManager) = Create();
         viewModel.Input = "0123456789abcdef0123456789abcdef01234567";
-        viewModel.StartPaused = false;
+        viewModel.State = AddTorrentState.Started;
 
         await viewModel.AddCommand.ExecuteAsync(null);
 
         Assert.Equal(TorrentState.Active, sessionManager.Sessions.Single().State);
+    }
+
+    [Fact]
+    public async Task AddCommand_StateStopped_SessionLandsStopped()
+    {
+        var (viewModel, sessionManager) = Create();
+        viewModel.Input = "0123456789abcdef0123456789abcdef01234567";
+        viewModel.State = AddTorrentState.Stopped;
+
+        await viewModel.AddCommand.ExecuteAsync(null);
+
+        Assert.Equal(TorrentState.Stopped, sessionManager.Sessions.Single().State);
+    }
+
+    [Fact]
+    public void Constructor_DefaultsStateFromSettings()
+    {
+        var sessionManager = new FakeSessionManager();
+        var pipeline = new TorrentAddPipeline(sessionManager);
+        var settings = new ClientSettings("/downloads") { DefaultAddTorrentState = AddTorrentState.Started };
+
+        var viewModel = new AddTorrentViewModel(pipeline, settings);
+
+        Assert.Equal(AddTorrentState.Started, viewModel.State);
     }
 }

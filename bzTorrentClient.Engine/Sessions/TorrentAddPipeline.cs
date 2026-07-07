@@ -20,7 +20,7 @@ public sealed class TorrentAddPipeline
     public async Task<TorrentSession> AddFromFileAsync(
         string torrentFilePath,
         string? downloadDirectory,
-        bool startImmediately,
+        AddTorrentState state = AddTorrentState.Paused,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(torrentFilePath))
@@ -31,33 +31,49 @@ public sealed class TorrentAddPipeline
 
         var bytes = await File.ReadAllBytesAsync(torrentFilePath, cancellationToken);
         var source = new TorrentAddSource.TorrentFile(bytes);
-        return await _sessionManager.AddAsync(source, downloadDirectory, startImmediately, cancellationToken);
+        return await AddAsync(source, downloadDirectory, state, cancellationToken);
     }
 
     public Task<TorrentSession> AddFromMagnetAsync(
         string magnetUri,
         string? downloadDirectory,
-        bool startImmediately,
+        AddTorrentState state = AddTorrentState.Paused,
         CancellationToken cancellationToken = default)
     {
         if (!MagnetLink.IsMagnetLink(magnetUri))
             throw new ArgumentException("Not a valid magnet URI.", nameof(magnetUri));
 
         var source = new TorrentAddSource.Magnet(magnetUri);
-        return _sessionManager.AddAsync(source, downloadDirectory, startImmediately, cancellationToken);
+        return AddAsync(source, downloadDirectory, state, cancellationToken);
     }
 
     public Task<TorrentSession> AddFromInfoHashAsync(
         string infoHashHex,
         string? downloadDirectory,
-        bool startImmediately,
+        AddTorrentState state = AddTorrentState.Paused,
         CancellationToken cancellationToken = default)
     {
         if (!IsValidInfoHash(infoHashHex))
             throw new ArgumentException("Info-hash must be exactly 40 hex characters.", nameof(infoHashHex));
 
         var source = TorrentAddSource.Magnet.FromInfoHash(infoHashHex);
-        return _sessionManager.AddAsync(source, downloadDirectory, startImmediately, cancellationToken);
+        return AddAsync(source, downloadDirectory, state, cancellationToken);
+    }
+
+    private async Task<TorrentSession> AddAsync(
+        TorrentAddSource source,
+        string? downloadDirectory,
+        AddTorrentState state,
+        CancellationToken cancellationToken)
+    {
+        var session = await _sessionManager.AddAsync(source, downloadDirectory, startImmediately: state == AddTorrentState.Started, cancellationToken);
+
+        // AddAsync always lands a new session Paused unless started immediately - Stopped
+        // needs an explicit extra step since it isn't a state AddAsync itself knows about.
+        if (state == AddTorrentState.Stopped)
+            await _sessionManager.StopAsync(session.Id, cancellationToken);
+
+        return session;
     }
 
     private static bool IsValidInfoHash(string? value) =>

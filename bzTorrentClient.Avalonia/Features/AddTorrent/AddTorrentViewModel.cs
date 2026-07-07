@@ -18,12 +18,14 @@ public partial class AddTorrentViewModel : ViewModelBase
     [ObservableProperty]
     private string _downloadDirectory;
 
-    /// <summary>Defaults to true: a newly added torrent lands Paused unless the user opts to start it right away.</summary>
+    /// <summary>Defaults from IClientSettings.DefaultAddTorrentState, overridable per-add.</summary>
     [ObservableProperty]
-    private bool _startPaused = true;
+    private AddTorrentState _state;
 
     [ObservableProperty]
     private string? _errorMessage;
+
+    public IReadOnlyList<AddTorrentState> States { get; } = Enum.GetValues<AddTorrentState>();
 
     /// <summary>Raised once the torrent has been added successfully; the view closes the dialog on this.</summary>
     public event EventHandler? Completed;
@@ -35,6 +37,7 @@ public partial class AddTorrentViewModel : ViewModelBase
         _addPipeline = addPipeline ?? throw new ArgumentNullException(nameof(addPipeline));
         ArgumentNullException.ThrowIfNull(settings);
         _downloadDirectory = settings.DefaultDownloadDirectory;
+        _state = settings.DefaultAddTorrentState;
 
         AddCommand = new AsyncRelayCommand(AddAsync);
     }
@@ -45,15 +48,14 @@ public partial class AddTorrentViewModel : ViewModelBase
 
         try
         {
-            var startImmediately = !StartPaused;
             var input = Input.Trim();
 
             if (MagnetLink.IsMagnetLink(input))
-                await _addPipeline.AddFromMagnetAsync(input, DownloadDirectory, startImmediately);
+                await _addPipeline.AddFromMagnetAsync(input, DownloadDirectory, State);
             else if (IsInfoHash(input))
-                await _addPipeline.AddFromInfoHashAsync(input, DownloadDirectory, startImmediately);
+                await _addPipeline.AddFromInfoHashAsync(input, DownloadDirectory, State);
             else if (File.Exists(input))
-                await _addPipeline.AddFromFileAsync(input, DownloadDirectory, startImmediately);
+                await _addPipeline.AddFromFileAsync(input, DownloadDirectory, State);
             else
                 throw new ArgumentException("Enter a .torrent file path, a magnet link, or a 40-character info-hash.");
 
@@ -62,8 +64,9 @@ public partial class AddTorrentViewModel : ViewModelBase
         catch (Exception ex)
         {
             // Broad by design: this is a UI command boundary (validation errors, disk
-            // errors, or — if "start immediately" is checked — anything StartAsync's
-            // networking setup can throw) must show as a message here, not crash the app.
+            // errors, or — if the torrent is set to start immediately — anything
+            // StartAsync's networking setup can throw) must show as a message here, not
+            // crash the app.
             ErrorMessage = ex.Message;
         }
     }

@@ -34,7 +34,10 @@
             </Grid>
         </StackPanel>
 
-        <CheckBox Content="Add paused (don't start downloading yet)" IsChecked="{Binding StartPaused}"/>
+        <StackPanel Spacing="{StaticResource SpaceXs}">
+            <TextBlock Classes="Caption" Text="ADD AS"/>
+            <ComboBox ItemsSource="{Binding States}" SelectedItem="{Binding State}" HorizontalAlignment="Stretch"/>
+        </StackPanel>
 
         <TextBlock Classes="Body" Text="{Binding ErrorMessage}" Foreground="{DynamicResource StateErrorBrush}" TextWrapping="Wrap"
                    IsVisible="{Binding ErrorMessage, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>

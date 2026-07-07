@@ -35,6 +35,13 @@
                             <ComboBox ItemsSource="{Binding ColorThemes}" SelectedItem="{Binding ColorTheme}" HorizontalAlignment="Stretch"/>
                         </StackPanel>
                     </Border>
+
+                    <Border Classes="Card">
+                        <StackPanel Spacing="{StaticResource SpaceSm}">
+                            <TextBlock Classes="Caption" Text="ADD TORRENT AS"/>
+                            <ComboBox ItemsSource="{Binding AddTorrentStates}" SelectedItem="{Binding DefaultAddTorrentState}" HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </TabItem>
 

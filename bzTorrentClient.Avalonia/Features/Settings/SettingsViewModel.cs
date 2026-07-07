@@ -1,5 +1,6 @@
 using bzTorrent.IO;
 using bzTorrentClient.Avalonia.ViewModels;
+using bzTorrentClient.Engine.Sessions;
 using bzTorrentClient.Engine.Settings;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -58,10 +59,14 @@ public partial class SettingsViewModel : ViewModelBase
     private PeerEncryptionMode _encryptionMode;
 
     [ObservableProperty]
+    private AddTorrentState _defaultAddTorrentState;
+
+    [ObservableProperty]
     private string? _errorMessage;
 
     public IReadOnlyList<ColorTheme> ColorThemes { get; } = Enum.GetValues<ColorTheme>();
     public IReadOnlyList<PeerEncryptionMode> EncryptionModes { get; } = Enum.GetValues<PeerEncryptionMode>();
+    public IReadOnlyList<AddTorrentState> AddTorrentStates { get; } = Enum.GetValues<AddTorrentState>();
 
     /// <summary>Raised once settings are validated and persisted; the view closes the dialog on this.</summary>
     public event EventHandler? Saved;
@@ -88,6 +93,7 @@ public partial class SettingsViewModel : ViewModelBase
         _enablePex = settings.EnablePex;
         _enableLpd = settings.EnableLpd;
         _encryptionMode = settings.EncryptionMode;
+        _defaultAddTorrentState = settings.DefaultAddTorrentState;
 
         SaveCommand = new RelayCommand(Save);
     }
@@ -153,6 +159,7 @@ public partial class SettingsViewModel : ViewModelBase
             _settings.EnablePex = EnablePex;
             _settings.EnableLpd = EnableLpd;
             _settings.EncryptionMode = EncryptionMode;
+            _settings.DefaultAddTorrentState = DefaultAddTorrentState;
             _settingsStore.Save(_settings);
         }
         catch (Exception ex)

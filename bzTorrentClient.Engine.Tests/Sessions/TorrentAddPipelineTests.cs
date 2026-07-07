@@ -22,7 +22,7 @@ public class TorrentAddPipelineTests
         var (pipeline, manager) = CreatePipeline();
         var path = Path.Combine("TestFiles", "UbuntuTestTorrent.torrent");
 
-        var session = await pipeline.AddFromFileAsync(path, null, startImmediately: false);
+        var session = await pipeline.AddFromFileAsync(path, null, AddTorrentState.Paused);
 
         Assert.NotEmpty(session.Metadata.PieceHashes);
         Assert.Contains(session, manager.Sessions);
@@ -34,7 +34,7 @@ public class TorrentAddPipelineTests
         var (pipeline, _) = CreatePipeline();
 
         await Assert.ThrowsAsync<FileNotFoundException>(() =>
-            pipeline.AddFromFileAsync("does-not-exist.torrent", null, false));
+            pipeline.AddFromFileAsync("does-not-exist.torrent", null, AddTorrentState.Paused));
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public class TorrentAddPipelineTests
         var session = await pipeline.AddFromMagnetAsync(
             "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=example",
             null,
-            startImmediately: false);
+            AddTorrentState.Paused);
 
         Assert.Empty(session.Metadata.PieceHashes);
         Assert.Contains(session, manager.Sessions);
@@ -57,7 +57,7 @@ public class TorrentAddPipelineTests
         var (pipeline, _) = CreatePipeline();
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            pipeline.AddFromMagnetAsync("not-a-magnet", null, false));
+            pipeline.AddFromMagnetAsync("not-a-magnet", null, AddTorrentState.Paused));
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public class TorrentAddPipelineTests
         var session = await pipeline.AddFromInfoHashAsync(
             "0123456789abcdef0123456789abcdef01234567",
             null,
-            startImmediately: false);
+            AddTorrentState.Paused);
 
         Assert.IsType<TorrentAddSource.Magnet>(session.Source);
         Assert.Equal("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567", ((TorrentAddSource.Magnet)session.Source).Uri);
@@ -84,6 +84,42 @@ public class TorrentAddPipelineTests
         var (pipeline, _) = CreatePipeline();
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            pipeline.AddFromInfoHashAsync(hash, null, false));
+            pipeline.AddFromInfoHashAsync(hash, null, AddTorrentState.Paused));
+    }
+
+    [Fact]
+    public async Task AddFromInfoHashAsync_StateStarted_SessionLandsActive()
+    {
+        var (pipeline, _) = CreatePipeline();
+
+        var session = await pipeline.AddFromInfoHashAsync(
+            "0123456789abcdef0123456789abcdef01234567",
+            null,
+            AddTorrentState.Started);
+
+        Assert.Equal(TorrentState.Active, session.State);
+    }
+
+    [Fact]
+    public async Task AddFromInfoHashAsync_StateStopped_SessionLandsStopped()
+    {
+        var (pipeline, _) = CreatePipeline();
+
+        var session = await pipeline.AddFromInfoHashAsync(
+            "0123456789abcdef0123456789abcdef01234567",
+            null,
+            AddTorrentState.Stopped);
+
+        Assert.Equal(TorrentState.Stopped, session.State);
+    }
+
+    [Fact]
+    public async Task AddFromInfoHashAsync_DefaultState_IsPaused()
+    {
+        var (pipeline, _) = CreatePipeline();
+
+        var session = await pipeline.AddFromInfoHashAsync("0123456789abcdef0123456789abcdef01234567", null);
+
+        Assert.Equal(TorrentState.Paused, session.State);
     }
 }

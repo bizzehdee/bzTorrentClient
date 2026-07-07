@@ -1,5 +1,6 @@
 using bzTorrent.IO;
 using bzTorrentClient.Avalonia.Features.Settings;
+using bzTorrentClient.Engine.Sessions;
 using bzTorrentClient.Engine.Settings;
 
 namespace bzTorrentClient.Avalonia.Tests.Features.Settings;
@@ -193,5 +194,29 @@ public class SettingsViewModelTests
 
         Assert.Null(viewModel.ErrorMessage);
         Assert.Equal(PeerEncryptionMode.PlainText, settings.EncryptionMode);
+    }
+
+    [Fact]
+    public void Constructor_DefaultsAddTorrentStateFromSettings()
+    {
+        var settings = new ClientSettings("/downloads") { DefaultAddTorrentState = AddTorrentState.Stopped };
+        var viewModel = new SettingsViewModel(settings, new FakeClientSettingsStore());
+
+        Assert.Equal(AddTorrentState.Stopped, viewModel.DefaultAddTorrentState);
+    }
+
+    [Fact]
+    public void Save_DefaultAddTorrentState_PersistsToSettings()
+    {
+        var settings = new ClientSettings("/downloads");
+        var viewModel = new SettingsViewModel(settings, new FakeClientSettingsStore())
+        {
+            DefaultAddTorrentState = AddTorrentState.Started,
+        };
+
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.Equal(AddTorrentState.Started, settings.DefaultAddTorrentState);
     }
 }

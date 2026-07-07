@@ -1,4 +1,5 @@
 using bzTorrent.IO;
+using bzTorrentClient.Engine.Sessions;
 using bzTorrentClient.Engine.Settings;
 using Xunit;
 
@@ -44,6 +45,7 @@ public class JsonClientSettingsStoreTests : IDisposable
             EnablePex = false,
             EnableLpd = false,
             EncryptionMode = PeerEncryptionMode.RequireEncryption,
+            DefaultAddTorrentState = AddTorrentState.Started,
         };
 
         store.Save(settings);
@@ -64,6 +66,7 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.False(reloaded.EnablePex);
         Assert.False(reloaded.EnableLpd);
         Assert.Equal(PeerEncryptionMode.RequireEncryption, reloaded.EncryptionMode);
+        Assert.Equal(AddTorrentState.Started, reloaded.DefaultAddTorrentState);
     }
 
     [Fact]
@@ -73,6 +76,15 @@ public class JsonClientSettingsStoreTests : IDisposable
         var settings = store.Load();
 
         Assert.Equal(PeerEncryptionMode.PreferEncryption, settings.EncryptionMode);
+    }
+
+    [Fact]
+    public void Load_MissingFile_DefaultsAddTorrentStateToPaused()
+    {
+        var store = new JsonClientSettingsStore(_filePath);
+        var settings = store.Load();
+
+        Assert.Equal(AddTorrentState.Paused, settings.DefaultAddTorrentState);
     }
 
     [Fact]
