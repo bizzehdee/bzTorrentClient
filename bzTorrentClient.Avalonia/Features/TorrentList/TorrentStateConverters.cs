@@ -9,6 +9,7 @@ public static class TorrentStateConverters
 {
     private static readonly IBrush Active = new SolidColorBrush(Color.Parse("#0EA5B7"));
     private static readonly IBrush Completed = new SolidColorBrush(Color.Parse("#4CAF7D"));
+    private static readonly IBrush Seeding = new SolidColorBrush(Color.Parse("#2E8B57"));
     private static readonly IBrush Paused = new SolidColorBrush(Color.Parse("#E0A840"));
     private static readonly IBrush Stopped = new SolidColorBrush(Color.Parse("#8A8A8A"));
     private static readonly IBrush Error = new SolidColorBrush(Color.Parse("#D9534F"));
@@ -17,6 +18,7 @@ public static class TorrentStateConverters
     {
         TorrentState.Active => Active,
         TorrentState.Completed => Completed,
+        TorrentState.Seeding => Seeding,
         TorrentState.Paused => Paused,
         TorrentState.Checking => Paused,
         TorrentState.Stopped => Stopped,

@@ -365,9 +365,11 @@ public class NetworkedSessionManagerTests : IDisposable
     [Fact]
     public async Task InitializeAsync_ResumesSessionsThatWereCompletedOnLastShutdown()
     {
-        // Regression test: a torrent left Completed when the app last closed should keep
-        // seeding across a restart without the user needing to press Start again - only
-        // an explicit Stop should end that, same as an Active torrent already gets.
+        // Regression test: a torrent left Completed (i.e. it was running and seeding) when
+        // the app last closed should keep seeding across a restart without the user
+        // needing to press Start again - only an explicit Stop should end that, same as an
+        // Active torrent already gets. It resumes into Seeding, the running equivalent of
+        // Completed, since it's now actually running again.
         Directory.CreateDirectory(_tempDir);
         var sourceFile = Path.Combine(_tempDir, "source.bin");
         await File.WriteAllBytesAsync(sourceFile, Enumerable.Range(0, 100).Select(b => (byte)b).ToArray());
@@ -392,7 +394,7 @@ public class NetworkedSessionManagerTests : IDisposable
 
         var resumed = manager.Sessions.Single();
         Assert.True(connectionManagers[resumed.Id].Started);
-        Assert.Equal(TorrentState.Completed, resumed.State);
+        Assert.Equal(TorrentState.Seeding, resumed.State);
     }
 
     [Fact]

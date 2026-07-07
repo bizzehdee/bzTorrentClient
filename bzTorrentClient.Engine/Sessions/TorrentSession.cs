@@ -55,9 +55,10 @@ public sealed class TorrentSession
     // --- User-driven lifecycle transitions ---
 
     /// <summary>
-    /// Paused/Stopped/Error -> Active. No-op if already Active/Completed
-    /// (Completed still counts as "running" — it just means everything is
-    /// verified and the torrent is now seeding).
+    /// Paused/Stopped/Error -> Active or Seeding (Seeding if everything's already
+    /// verified - e.g. resuming a torrent that finished before the app last closed).
+    /// Completed -> Seeding (starts seeding an idle-but-fully-downloaded torrent).
+    /// No-op if already Active/Seeding.
     /// </summary>
     public void Start()
     {
@@ -66,11 +67,14 @@ public sealed class TorrentSession
             case TorrentState.Paused:
             case TorrentState.Stopped:
             case TorrentState.Error:
-                State = TorrentState.Active;
+                State = IsFullyVerified ? TorrentState.Seeding : TorrentState.Active;
                 LastError = null;
                 break;
-            case TorrentState.Active:
             case TorrentState.Completed:
+                State = TorrentState.Seeding;
+                break;
+            case TorrentState.Active:
+            case TorrentState.Seeding:
                 break;
             case TorrentState.Checking:
                 throw new InvalidOperationException("Cannot start a torrent while it is being checked.");
@@ -80,7 +84,7 @@ public sealed class TorrentSession
     }
 
     /// <summary>
-    /// Soft halt: Active/Completed -> Paused. Peer connections are dropped
+    /// Soft halt: Active/Seeding -> Paused. Peer connections are dropped
     /// but the torrent stays loaded — resuming does not need a fresh
     /// tracker/DHT announce.
     /// </summary>
@@ -89,7 +93,7 @@ public sealed class TorrentSession
         switch (State)
         {
             case TorrentState.Active:
-            case TorrentState.Completed:
+            case TorrentState.Seeding:
                 State = TorrentState.Paused;
                 break;
             case TorrentState.Paused:
@@ -100,6 +104,8 @@ public sealed class TorrentSession
                 throw new InvalidOperationException("Cannot pause a torrent while it is being checked.");
             case TorrentState.Error:
                 throw new InvalidOperationException("Cannot pause a torrent that is in an error state; start it to retry.");
+            case TorrentState.Completed:
+                throw new InvalidOperationException("Cannot pause a completed torrent that isn't running; start it to seed, or stop it.");
             default:
                 throw new InvalidOperationException($"Unhandled state {State}.");
         }
@@ -164,7 +170,7 @@ public sealed class TorrentSession
         PieceCompletion[pieceIndex] = true;
 
         if (State == TorrentState.Active && IsFullyVerified)
-            State = TorrentState.Completed;
+            State = TorrentState.Seeding;
     }
 
     /// <summary>

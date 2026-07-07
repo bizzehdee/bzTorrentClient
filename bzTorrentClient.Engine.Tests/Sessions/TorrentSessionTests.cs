@@ -114,13 +114,53 @@ public class TorrentSessionTests
     }
 
     [Fact]
-    public void MarkPieceVerified_LastPieceWhileActive_TransitionsToCompleted()
+    public void MarkPieceVerified_LastPieceWhileActive_TransitionsToSeeding()
     {
         var session = CreateSession(pieceCount: 2);
         session.Start();
         session.MarkPieceVerified(0);
         session.MarkPieceVerified(1);
+        Assert.Equal(TorrentState.Seeding, session.State);
+    }
+
+    [Fact]
+    public void Start_FromCompleted_TransitionsToSeeding()
+    {
+        var session = CreateSession(pieceCount: 2);
+        session.BeginChecking();
+        session.MarkPieceVerified(0);
+        session.MarkPieceVerified(1);
+        session.FinishChecking();
         Assert.Equal(TorrentState.Completed, session.State);
+
+        session.Start();
+
+        Assert.Equal(TorrentState.Seeding, session.State);
+    }
+
+    [Fact]
+    public void Pause_FromSeeding_TransitionsToPaused()
+    {
+        var session = CreateSession(pieceCount: 1);
+        session.Start();
+        session.MarkPieceVerified(0);
+        Assert.Equal(TorrentState.Seeding, session.State);
+
+        session.Pause();
+
+        Assert.Equal(TorrentState.Paused, session.State);
+    }
+
+    [Fact]
+    public void Pause_FromCompleted_Throws()
+    {
+        var session = CreateSession(pieceCount: 1);
+        session.BeginChecking();
+        session.MarkPieceVerified(0);
+        session.FinishChecking();
+        Assert.Equal(TorrentState.Completed, session.State);
+
+        Assert.Throws<InvalidOperationException>(session.Pause);
     }
 
     [Fact]

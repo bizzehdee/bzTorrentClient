@@ -114,7 +114,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         // by it, not Active, but should still resume downloading the missing pieces same
         // as if it had never finished.
         var previouslyRunningIds = sessions
-            .Where(s => s.State is TorrentState.Active or TorrentState.Completed)
+            .Where(s => s.State is TorrentState.Active or TorrentState.Completed or TorrentState.Seeding)
             .Select(s => s.Id)
             .ToList();
 
@@ -403,11 +403,11 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     /// </summary>
     private static async Task VerifyAgainstDiskAsync(TorrentSession session, CancellationToken cancellationToken)
     {
-        // Completed counts as "running" here same as Active - a finished torrent keeps
-        // seeding until the user explicitly stops it, so if disk state has since regressed
-        // (e.g. files removed externally) it must resume downloading the missing pieces
-        // rather than just sit there having lost its Active/Completed status.
-        var wasRunning = session.State is TorrentState.Active or TorrentState.Completed;
+        // Completed/Seeding count as "running" here same as Active - a finished torrent
+        // keeps seeding until the user explicitly stops it, so if disk state has since
+        // regressed (e.g. files removed externally) it must resume downloading the
+        // missing pieces rather than just sit there having lost its running status.
+        var wasRunning = session.State is TorrentState.Active or TorrentState.Completed or TorrentState.Seeding;
 
         session.Stop(); // Normalizes any prior state to Stopped, from which BeginChecking is always legal.
         session.BeginChecking();
@@ -419,10 +419,11 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         session.FinishChecking();
 
         // FinishChecking only ever lands on Paused or Completed. If this torrent was
-        // running before the check started, restore Active so it keeps going - callers
+        // running before the check started, restore it (Paused -> Active/Seeding,
+        // Completed -> Seeding, per Start()) so it keeps going - callers
         // (StartAsync/RunDeferredMetadataFetchAsync) don't separately re-issue Start()
-        // for a session that's already active mid-flight.
-        if (wasRunning && session.State == TorrentState.Paused)
+        // for a session that's already running mid-flight.
+        if (wasRunning && session.State is TorrentState.Paused or TorrentState.Completed)
             session.Start();
     }
 
