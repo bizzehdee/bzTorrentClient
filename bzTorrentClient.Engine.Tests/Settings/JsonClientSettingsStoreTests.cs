@@ -46,6 +46,7 @@ public class JsonClientSettingsStoreTests : IDisposable
             EnableDht = false,
             EnablePex = false,
             EnableLpd = false,
+            CloseToTray = false,
             EncryptionMode = PeerEncryptionMode.RequireEncryption,
             DefaultAddTorrentState = AddTorrentState.Started,
             LogDirectory = "/custom/logs",
@@ -75,6 +76,7 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.False(reloaded.EnableDht);
         Assert.False(reloaded.EnablePex);
         Assert.False(reloaded.EnableLpd);
+        Assert.False(reloaded.CloseToTray);
         Assert.Equal(PeerEncryptionMode.RequireEncryption, reloaded.EncryptionMode);
         Assert.Equal(AddTorrentState.Started, reloaded.DefaultAddTorrentState);
         Assert.Equal("/custom/logs", reloaded.LogDirectory);
@@ -158,6 +160,7 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.True(settings.EnableDht);
         Assert.True(settings.EnablePex);
         Assert.True(settings.EnableLpd);
+        Assert.True(settings.CloseToTray);
     }
 
     [Fact]

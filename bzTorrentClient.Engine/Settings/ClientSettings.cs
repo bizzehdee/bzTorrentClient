@@ -24,6 +24,7 @@ public sealed class ClientSettings : IClientSettings
     public bool EnableLpd { get; set; } = true;
     public PeerEncryptionMode EncryptionMode { get; set; } = PeerEncryptionMode.PreferEncryption;
     public AddTorrentState DefaultAddTorrentState { get; set; } = AddTorrentState.Paused;
+    public bool CloseToTray { get; set; } = true;
     public string LogDirectory { get; set; }
     public long LogMaxFileSizeBytes { get; set; } = 100_000;
     public int LogMaxAgeDays { get; set; } = 7;

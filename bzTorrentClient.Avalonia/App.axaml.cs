@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
@@ -26,6 +27,10 @@ public partial class App : Application
     }
 
     private IClientSettings? _settings;
+
+    // Set when the user explicitly exits via the tray menu, so the main window's Closing
+    // handler lets the close through instead of hiding it to the tray.
+    private bool _exitRequestedFromTray;
 
     public override void OnFrameworkInitializationCompleted()
     {
@@ -99,13 +104,17 @@ public partial class App : Application
 
             var mainWindowViewModel = new MainWindowViewModel(sessionManager, addPipeline, settings, settingsStore);
 
-            desktop.MainWindow = new MainWindow
+            var mainWindow = new MainWindow
             {
                 DataContext = mainWindowViewModel,
             };
+            desktop.MainWindow = mainWindow;
+
+            var trayIcon = SetUpTrayIcon(mainWindow);
 
             desktop.ShutdownRequested += (_, _) =>
             {
+                trayIcon?.Dispose();
                 upnpPortMapper?.Dispose();
                 sessionManager.Dispose();
             };
@@ -114,6 +123,72 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Creates the system-tray icon: clicking it (or its Show/Hide menu item) toggles the main
+    /// window, and Exit shuts the app down for real. Also wires the main window's close button
+    /// to hide-to-tray when the CloseToTray setting is on. Returns the tray icon so the caller
+    /// can dispose it on shutdown.
+    /// </summary>
+    private TrayIcon SetUpTrayIcon(Window mainWindow)
+    {
+        void ToggleWindow()
+        {
+            if (mainWindow.IsVisible)
+            {
+                mainWindow.Hide();
+            }
+            else
+            {
+                mainWindow.Show();
+                mainWindow.WindowState = WindowState.Normal;
+                mainWindow.Activate();
+            }
+        }
+
+        var showHideItem = new NativeMenuItem("Show / Hide");
+        showHideItem.Click += (_, _) => ToggleWindow();
+
+        var exitItem = new NativeMenuItem("Exit");
+        exitItem.Click += (_, _) =>
+        {
+            // Close the (only) window with the flag set so the Closing handler lets it through
+            // instead of hiding it. That runs the normal last-window-close shutdown path -
+            // same cleanup (persistence, UPnP unmap) as closing with close-to-tray off.
+            _exitRequestedFromTray = true;
+            mainWindow.Close();
+        };
+
+        var menu = new NativeMenu();
+        menu.Items.Add(showHideItem);
+        menu.Items.Add(new NativeMenuItemSeparator());
+        menu.Items.Add(exitItem);
+
+        var trayIcon = new TrayIcon
+        {
+            Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://bzTorrentClient.Avalonia/Assets/bztorrent.ico"))),
+            ToolTipText = "bzTorrent Client",
+            Menu = menu,
+            IsVisible = true,
+        };
+        trayIcon.Clicked += (_, _) => ToggleWindow();
+
+        TrayIcon.SetIcons(this, new TrayIcons { trayIcon });
+
+        // Close-to-tray: intercept the window's close and hide it instead, unless the setting
+        // is off or the user chose Exit from the tray. _settings is the same instance the
+        // Settings dialog writes to, so toggling it takes effect without a restart.
+        mainWindow.Closing += (_, e) =>
+        {
+            if (!_exitRequestedFromTray && (_settings?.CloseToTray ?? true))
+            {
+                e.Cancel = true;
+                mainWindow.Hide();
+            }
+        };
+
+        return trayIcon;
     }
 
     /// <summary>

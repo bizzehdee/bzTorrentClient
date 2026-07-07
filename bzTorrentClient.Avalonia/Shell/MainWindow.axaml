@@ -9,7 +9,7 @@
         mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="680"
         x:Class="bzTorrentClient.Avalonia.Shell.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Icon="/Assets/avalonia-logo.ico"
+        Icon="/Assets/bztorrent.ico"
         Title="bzTorrentClient"
         Background="{DynamicResource AppBackgroundBrush}"
         Width="1100" Height="680" MinWidth="760" MinHeight="480">

@@ -9,4 +9,4 @@ Terminal=false
 Categories=Network;FileTransfer;P2P;
 Keywords=torrent;bittorrent;p2p;download;magnet;
 StartupNotify=true
-StartupWMClass=bzTorrentClient.Avalonia
+StartupWMClass=io.github.bizzehdee.bzTorrentClient

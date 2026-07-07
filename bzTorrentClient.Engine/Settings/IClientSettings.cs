@@ -80,6 +80,13 @@ public interface IClientSettings
     /// <summary>The state a newly added torrent lands in by default (Paused/Started/Stopped). Default Paused.</summary>
     AddTorrentState DefaultAddTorrentState { get; set; }
 
+    /// <summary>
+    /// When true, clicking the main window's close button hides it to the system tray and
+    /// keeps the app running (restore by clicking the tray icon); when false, closing exits
+    /// the app. Default true.
+    /// </summary>
+    bool CloseToTray { get; set; }
+
     /// <summary>Directory debug log files are written to.</summary>
     string LogDirectory { get; set; }
 

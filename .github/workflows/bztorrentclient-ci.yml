@@ -82,11 +82,8 @@ jobs:
       # ---- Shared packaging assets (icon + versioned metainfo) ----
       - name: Prepare packaging assets
         run: |
-          sudo apt-get update
-          sudo apt-get install -y icoutils imagemagick
-          # Extract the largest frame from the .ico and render a 256x256 PNG named after the app id.
-          icotool -x bzTorrentClient.Avalonia/Assets/avalonia-logo.ico
-          convert "$(ls -S avalonia-logo_*.png | head -1)" -resize '256x256!' "$APP_ID.png"
+          # The 256x256 app icon (papaya "bz") named after the app id for hicolor/desktop use.
+          cp bzTorrentClient.Avalonia/Assets/bztorrent-256.png "$APP_ID.png"
           # Stamp the release into the AppStream metainfo.
           sed -e "s/@VERSION@/$VERSION/" -e "s/@DATE@/$RELEASE_DATE/" \
             packaging/linux/$APP_ID.metainfo.xml > "$APP_ID.metainfo.xml"

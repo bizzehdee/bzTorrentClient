@@ -22,7 +22,12 @@ sealed class Program
             // context. Every text field in this app takes plain ASCII (file paths, magnet
             // links, hex info-hashes), so the IME buys nothing here; turning it off avoids
             // the focus stall entirely.
-            .With(new X11PlatformOptions { EnableIme = false })
+            //
+            // WmClass must match the installed desktop file's basename/StartupWMClass
+            // (io.github.bizzehdee.bzTorrentClient.desktop) so the Linux shell associates the
+            // running window with it - otherwise the dock/dash and app switcher show a generic
+            // icon and a separate entry instead of the app's own icon.
+            .With(new X11PlatformOptions { EnableIme = false, WmClass = "io.github.bizzehdee.bzTorrentClient" })
 #if DEBUG
             .WithDeveloperTools()
 #endif

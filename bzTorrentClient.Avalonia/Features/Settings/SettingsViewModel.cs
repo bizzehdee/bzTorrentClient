@@ -25,6 +25,9 @@ public partial class SettingsViewModel : ViewModelBase
     private int _listenPort;
 
     [ObservableProperty]
+    private bool _closeToTray;
+
+    [ObservableProperty]
     private bool _randomiseListenPortOnStartup;
 
     [ObservableProperty]
@@ -107,6 +110,7 @@ public partial class SettingsViewModel : ViewModelBase
         _globalMaxConnections = settings.GlobalMaxConnections;
         _maxConnectionsPerTorrent = settings.MaxConnectionsPerTorrent;
         _listenPort = settings.ListenPort;
+        _closeToTray = settings.CloseToTray;
         _randomiseListenPortOnStartup = settings.RandomiseListenPortOnStartup;
         _enableUpnpPortForwarding = settings.EnableUpnpPortForwarding;
         _downloadLimitKBps = (int)(settings.GlobalDownloadLimitBytesPerSecond / 1024);
@@ -205,6 +209,7 @@ public partial class SettingsViewModel : ViewModelBase
             _settings.GlobalMaxConnections = GlobalMaxConnections;
             _settings.MaxConnectionsPerTorrent = MaxConnectionsPerTorrent;
             _settings.ListenPort = ListenPort;
+            _settings.CloseToTray = CloseToTray;
             _settings.RandomiseListenPortOnStartup = RandomiseListenPortOnStartup;
             _settings.EnableUpnpPortForwarding = EnableUpnpPortForwarding;
             _settings.GlobalDownloadLimitBytesPerSecond = (long)DownloadLimitKBps * 1024;
