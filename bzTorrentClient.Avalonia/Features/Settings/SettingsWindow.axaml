@@ -4,10 +4,10 @@
         xmlns:conv="using:Avalonia.Data.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="460" d:DesignHeight="420"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="420"
         x:Class="bzTorrentClient.Avalonia.Features.Settings.SettingsWindow"
         x:DataType="vm:SettingsViewModel"
-        Width="460" SizeToContent="Height" CanResize="False"
+        Width="640" SizeToContent="Height" CanResize="False"
         Background="{DynamicResource AppBackgroundBrush}"
         Title="Settings">
 
@@ -46,70 +46,78 @@
             </TabItem>
 
             <TabItem Header="Network">
-                <StackPanel Spacing="{StaticResource SpaceMd}" Margin="{StaticResource SpaceMdThickness}">
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="{StaticResource SpaceMd}" Margin="{StaticResource SpaceMdThickness}">
 
-                    <Border Classes="Card">
-                        <StackPanel Spacing="{StaticResource SpaceMd}">
+                    <StackPanel Grid.Column="0" Spacing="{StaticResource SpaceMd}">
 
-                            <StackPanel Spacing="{StaticResource SpaceXs}">
-                                <TextBlock Classes="Caption" Text="GLOBAL MAX CONNECTIONS"/>
-                                <NumericUpDown Value="{Binding GlobalMaxConnections}" Minimum="1" Maximum="10000" Increment="1" FormatString="0"/>
+                        <Border Classes="Card">
+                            <StackPanel Spacing="{StaticResource SpaceMd}">
+
+                                <StackPanel Spacing="{StaticResource SpaceXs}">
+                                    <TextBlock Classes="Caption" Text="GLOBAL MAX CONNECTIONS"/>
+                                    <NumericUpDown Value="{Binding GlobalMaxConnections}" Minimum="1" Maximum="10000" Increment="1" FormatString="0"/>
+                                </StackPanel>
+
+                                <StackPanel Spacing="{StaticResource SpaceXs}">
+                                    <TextBlock Classes="Caption" Text="MAX CONNECTIONS PER TORRENT"/>
+                                    <NumericUpDown Value="{Binding MaxConnectionsPerTorrent}" Minimum="1" Maximum="1000" Increment="1" FormatString="0"/>
+                                </StackPanel>
+
+                                <StackPanel Spacing="{StaticResource SpaceXs}">
+                                    <TextBlock Classes="Caption" Text="LISTEN PORT"/>
+                                    <NumericUpDown Value="{Binding ListenPort}" Minimum="1" Maximum="65535" Increment="1" FormatString="0"/>
+                                </StackPanel>
+
                             </StackPanel>
+                        </Border>
 
-                            <StackPanel Spacing="{StaticResource SpaceXs}">
-                                <TextBlock Classes="Caption" Text="MAX CONNECTIONS PER TORRENT"/>
-                                <NumericUpDown Value="{Binding MaxConnectionsPerTorrent}" Minimum="1" Maximum="1000" Increment="1" FormatString="0"/>
+                        <Border Classes="Card">
+                            <StackPanel Spacing="{StaticResource SpaceSm}">
+                                <TextBlock Classes="Caption" Text="PEER DISCOVERY"/>
+                                <CheckBox Content="DHT (distributed hash table)" IsChecked="{Binding EnableDht}"/>
+                                <CheckBox Content="PEX (peer exchange)" IsChecked="{Binding EnablePex}"/>
+                                <CheckBox Content="Local peer discovery (LAN)" IsChecked="{Binding EnableLpd}"/>
+                                <TextBlock Classes="Body" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                           Text="Always off for private torrents, regardless of these settings."/>
                             </StackPanel>
+                        </Border>
 
-                            <StackPanel Spacing="{StaticResource SpaceXs}">
-                                <TextBlock Classes="Caption" Text="LISTEN PORT"/>
-                                <NumericUpDown Value="{Binding ListenPort}" Minimum="1" Maximum="65535" Increment="1" FormatString="0"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Spacing="{StaticResource SpaceMd}">
+
+                        <Border Classes="Card">
+                            <StackPanel Spacing="{StaticResource SpaceMd}">
+
+                                <StackPanel Spacing="{StaticResource SpaceXs}">
+                                    <TextBlock Classes="Caption" TextWrapping="Wrap" Text="DOWNLOAD LIMIT (KB/S, 0 = UNLIMITED)"/>
+                                    <NumericUpDown Value="{Binding DownloadLimitKBps}" Minimum="0" Maximum="1000000" Increment="10" FormatString="0"/>
+                                </StackPanel>
+
+                                <StackPanel Spacing="{StaticResource SpaceXs}">
+                                    <TextBlock Classes="Caption" TextWrapping="Wrap" Text="UPLOAD LIMIT (KB/S, 0 = UNLIMITED)"/>
+                                    <NumericUpDown Value="{Binding UploadLimitKBps}" Minimum="0" Maximum="1000000" Increment="10" FormatString="0"/>
+                                </StackPanel>
+
                             </StackPanel>
+                        </Border>
 
-                        </StackPanel>
-                    </Border>
-
-                    <Border Classes="Card">
-                        <StackPanel Spacing="{StaticResource SpaceMd}">
-
-                            <StackPanel Spacing="{StaticResource SpaceXs}">
-                                <TextBlock Classes="Caption" Text="DOWNLOAD LIMIT (KB/S, 0 = UNLIMITED)"/>
-                                <NumericUpDown Value="{Binding DownloadLimitKBps}" Minimum="0" Maximum="1000000" Increment="10" FormatString="0"/>
+                        <Border Classes="Card">
+                            <StackPanel Spacing="{StaticResource SpaceSm}">
+                                <TextBlock Classes="Caption" Text="PROTOCOL ENCRYPTION"/>
+                                <ComboBox ItemsSource="{Binding EncryptionModes}" SelectedItem="{Binding EncryptionMode}" HorizontalAlignment="Stretch">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Converter={x:Static vm:EncryptionModeConverters.ToDisplayText}}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
                             </StackPanel>
+                        </Border>
 
-                            <StackPanel Spacing="{StaticResource SpaceXs}">
-                                <TextBlock Classes="Caption" Text="UPLOAD LIMIT (KB/S, 0 = UNLIMITED)"/>
-                                <NumericUpDown Value="{Binding UploadLimitKBps}" Minimum="0" Maximum="1000000" Increment="10" FormatString="0"/>
-                            </StackPanel>
+                    </StackPanel>
 
-                        </StackPanel>
-                    </Border>
-
-                    <Border Classes="Card">
-                        <StackPanel Spacing="{StaticResource SpaceSm}">
-                            <TextBlock Classes="Caption" Text="PEER DISCOVERY"/>
-                            <CheckBox Content="DHT (distributed hash table)" IsChecked="{Binding EnableDht}"/>
-                            <CheckBox Content="PEX (peer exchange)" IsChecked="{Binding EnablePex}"/>
-                            <CheckBox Content="Local peer discovery (LAN)" IsChecked="{Binding EnableLpd}"/>
-                            <TextBlock Classes="Body" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
-                                       Text="Always off for private torrents, regardless of these settings."/>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Classes="Card">
-                        <StackPanel Spacing="{StaticResource SpaceSm}">
-                            <TextBlock Classes="Caption" Text="PROTOCOL ENCRYPTION"/>
-                            <ComboBox ItemsSource="{Binding EncryptionModes}" SelectedItem="{Binding EncryptionMode}" HorizontalAlignment="Stretch">
-                                <ComboBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding Converter={x:Static vm:EncryptionModeConverters.ToDisplayText}}"/>
-                                    </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                            </ComboBox>
-                        </StackPanel>
-                    </Border>
-
-                </StackPanel>
+                </Grid>
             </TabItem>
 
             <TabItem Header="Trackers">
