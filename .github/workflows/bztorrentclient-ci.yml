@@ -160,6 +160,14 @@ jobs:
           flatpak build-bundle flatpak-repo "bzTorrentClient-$VERSION-x86_64.flatpak" \
             "$APP_ID" --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
+      # Delete the previous CI release (and its tag) so each run publishes a genuinely fresh
+      # "CI" release rather than editing the existing one in place. Tolerates the first run,
+      # when there's nothing to delete yet.
+      - name: Delete previous CI release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete ci-latest --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+
       - name: Publish CI release
         uses: softprops/action-gh-release@v2
         with:
