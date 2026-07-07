@@ -25,8 +25,12 @@ public class SqliteSchemaUpgraderTests : IDisposable
             File.Delete(_dbPath);
     }
 
+    // Pooling=False so disposing a DbContext's connection actually releases the file handle
+    // rather than parking it in Microsoft.Data.Sqlite's connection pool. On Windows a pooled
+    // (still-open) handle makes File.Delete in Dispose fail with "being used by another
+    // process"; Linux allows unlinking an open file, which is why this only surfaced on Windows.
     private DbContextOptions<BzTorrentClientDbContext> Options() =>
-        new DbContextOptionsBuilder<BzTorrentClientDbContext>().UseSqlite($"Data Source={_dbPath}").Options;
+        new DbContextOptionsBuilder<BzTorrentClientDbContext>().UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
 
     /// <summary>
     /// Builds a database via the real schema/EF write path (so column types/formats are
@@ -43,7 +47,7 @@ public class SqliteSchemaUpgraderTests : IDisposable
         var session = new TorrentSession(source, source.ResolveMetadata(), "/downloads");
         await store.SaveAsync(session);
 
-        using var connection = new SqliteConnection($"Data Source={_dbPath}");
+        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
         connection.Open();
         foreach (var column in SeedUntilColumns)
         {
