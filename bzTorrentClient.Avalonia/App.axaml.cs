@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using Avalonia;
@@ -275,8 +276,15 @@ public partial class App : Application
 
     private static string GenerateLocalPeerId()
     {
+        // Azureus-style peer id: "-bzMMmm-" then 12 random digits, where MM/mm are the two-digit
+        // major/minor of the assembly version (CI stamps it via -p:Version). e.g. version 2.4.1
+        // -> "-bz0204-". Mod 100 keeps each field two digits if the version ever exceeds 99.
+        var version = Assembly.GetEntryAssembly()?.GetName().Version
+            ?? Assembly.GetExecutingAssembly().GetName().Version
+            ?? new Version(0, 0);
+
         var random = new Random();
-        var idBuilder = new StringBuilder("-bz0100-");
+        var idBuilder = new StringBuilder($"-bz{version.Major % 100:D2}{version.Minor % 100:D2}-");
         for (var i = 0; i < 12; i++)
             idBuilder.Append(random.Next(0, 10));
 
