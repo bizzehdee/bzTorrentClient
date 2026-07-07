@@ -192,6 +192,104 @@ public class TorrentSessionTests
     }
 
     [Fact]
+    public void SeedRatio_NothingDownloadedYet_IsNull()
+    {
+        var session = CreateSession();
+        Assert.Null(session.SeedRatio);
+    }
+
+    [Fact]
+    public void SeedRatio_ReflectsUploadedOverDownloaded()
+    {
+        var session = CreateSession();
+        session.AddTransferredBytes(uploaded: 50, downloaded: 100);
+        Assert.Equal(0.5, session.SeedRatio);
+    }
+
+    [Fact]
+    public void AddTransferredBytes_Accumulates()
+    {
+        var session = CreateSession();
+        session.AddTransferredBytes(10, 20);
+        session.AddTransferredBytes(5, 5);
+        Assert.Equal(15, session.TotalBytesUploaded);
+        Assert.Equal(25, session.TotalBytesDownloaded);
+    }
+
+    [Fact]
+    public void TotalSeedingElapsed_WhileSeeding_GrowsOverTime()
+    {
+        var session = CreateSession(pieceCount: 1);
+        session.Start();
+        session.MarkPieceVerified(0);
+        Assert.Equal(TorrentState.Seeding, session.State);
+
+        var first = session.TotalSeedingElapsed;
+        Thread.Sleep(20);
+        var second = session.TotalSeedingElapsed;
+
+        Assert.True(second > first);
+    }
+
+    [Fact]
+    public void TotalSeedingElapsed_BankedAcrossPauseAndResume()
+    {
+        var session = CreateSession(pieceCount: 1);
+        session.Start();
+        session.MarkPieceVerified(0);
+
+        Thread.Sleep(20);
+        session.Pause();
+        var bankedAfterPause = session.TotalSeedingElapsed;
+
+        // Not seeding right now - elapsed must not keep growing while paused.
+        Thread.Sleep(20);
+        Assert.Equal(bankedAfterPause, session.TotalSeedingElapsed);
+
+        // Resuming continues accumulating on top of the banked time, not from zero.
+        session.Start();
+        Thread.Sleep(20);
+        Assert.True(session.TotalSeedingElapsed > bankedAfterPause);
+    }
+
+    [Fact]
+    public void StopSeedingDueToLimit_TransitionsToCompletedAndMarksLimitReached()
+    {
+        var session = CreateSession(pieceCount: 1);
+        session.Start();
+        session.MarkPieceVerified(0);
+
+        session.StopSeedingDueToLimit();
+
+        Assert.Equal(TorrentState.Completed, session.State);
+        Assert.True(session.SeedingLimitReached);
+    }
+
+    [Fact]
+    public void StopSeedingDueToLimit_FromNonSeedingState_Throws()
+    {
+        var session = CreateSession();
+        Assert.Throws<InvalidOperationException>(session.StopSeedingDueToLimit);
+    }
+
+    [Fact]
+    public void Start_AfterSeedingLimitReached_ResumesSeedingWithFlagStillSet()
+    {
+        // Per the intended UX: once the seed-until policy has stopped a torrent, manually
+        // starting it again means "seed forever" - the flag deliberately never resets
+        // itself back to false.
+        var session = CreateSession(pieceCount: 1);
+        session.Start();
+        session.MarkPieceVerified(0);
+        session.StopSeedingDueToLimit();
+
+        session.Start();
+
+        Assert.Equal(TorrentState.Seeding, session.State);
+        Assert.True(session.SeedingLimitReached);
+    }
+
+    [Fact]
     public void Constructor_RejectsEmptyDownloadDirectory()
     {
         Assert.Throws<ArgumentException>(() =>

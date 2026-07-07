@@ -81,6 +81,25 @@
             </StackPanel>
         </Border>
 
+        <Border Classes="Card">
+            <StackPanel Spacing="{StaticResource SpaceMd}">
+
+                <StackPanel Spacing="{StaticResource SpaceXs}">
+                    <TextBlock Classes="Caption" Text="SEED UNTIL TIME (MINUTES AFTER COMPLETION)"/>
+                    <NumericUpDown Value="{Binding SeedUntilMinutes}" Minimum="1" Maximum="100000" Increment="10" FormatString="0"/>
+                </StackPanel>
+
+                <StackPanel Spacing="{StaticResource SpaceXs}">
+                    <TextBlock Classes="Caption" Text="SEED UNTIL RATIO (UPLOADED / DOWNLOADED)"/>
+                    <NumericUpDown Value="{Binding SeedUntilRatio}" Minimum="0.1" Maximum="1000" Increment="0.1" FormatString="0.0"/>
+                </StackPanel>
+
+                <TextBlock Classes="Body" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                           Text="Seeding stops automatically once either is reached, whichever comes first. Starting a torrent again after that seeds it until manually stopped."/>
+
+            </StackPanel>
+        </Border>
+
         <TextBlock Classes="Body" Text="{Binding ErrorMessage}" Foreground="{DynamicResource StateErrorBrush}" TextWrapping="Wrap"
                    IsVisible="{Binding ErrorMessage, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
 

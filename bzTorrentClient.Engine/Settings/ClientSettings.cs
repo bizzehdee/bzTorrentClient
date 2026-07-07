@@ -10,6 +10,8 @@ public sealed class ClientSettings : IClientSettings
     public long GlobalUploadLimitBytesPerSecond { get; set; }
     public string DefaultTrackerListUrl { get; set; } = string.Empty;
     public string DefaultTrackerListText { get; set; } = string.Empty;
+    public int SeedUntilMinutes { get; set; } = 60;
+    public double SeedUntilRatio { get; set; } = 1.0;
 
     public ClientSettings(string? defaultDownloadDirectory = null)
     {

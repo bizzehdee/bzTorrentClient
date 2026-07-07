@@ -29,9 +29,11 @@ public class NetworkedSessionManagerTests : IDisposable
             InMemorySessionStore store,
             Guid? failingSessionId = null,
             TimeSpan? metadataRetryDelay = null,
-            IDefaultTrackerListProvider? defaultTrackerListProvider = null)
+            IDefaultTrackerListProvider? defaultTrackerListProvider = null,
+            ClientSettings? settings = null,
+            TimeSpan? seedingPolicyCheckInterval = null)
     {
-        var settings = new ClientSettings(_tempDir);
+        settings ??= new ClientSettings(_tempDir);
         var inner = new SessionManager(store, settings);
 
         var peerSources = new Dictionary<Guid, FakePeerSource>();
@@ -60,7 +62,8 @@ public class NetworkedSessionManagerTests : IDisposable
             },
             metadataFetchTimeout: TimeSpan.FromMilliseconds(100),
             metadataRetryDelay: metadataRetryDelay ?? TimeSpan.FromMilliseconds(100),
-            defaultTrackerListProvider: defaultTrackerListProvider);
+            defaultTrackerListProvider: defaultTrackerListProvider,
+            seedingPolicyCheckInterval: seedingPolicyCheckInterval);
 
         return (manager, peerSources, connectionManagers, pieceManagers);
     }
@@ -338,6 +341,81 @@ public class NetworkedSessionManagerTests : IDisposable
         Assert.Equal(0, completed);
         Assert.True(session.PieceCompletion[0]);
         Assert.Equal(1.0, session.ProgressFraction);
+    }
+
+    [Fact]
+    public async Task SeedingPolicy_RatioReached_AutomaticallyStopsSeedingIntoCompleted()
+    {
+        var sourceDir = Path.Combine(_tempDir, "source");
+        Directory.CreateDirectory(sourceDir);
+        var sourceFile = Path.Combine(sourceDir, "content.bin");
+        var content = Enumerable.Range(0, 100).Select(b => (byte)b).ToArray();
+        await File.WriteAllBytesAsync(sourceFile, content);
+
+        var builtMetadata = Metadata.CreateFromPath(sourceFile);
+        using var torrentBytes = new MemoryStream();
+        builtMetadata.Save(torrentBytes);
+
+        var settings = new ClientSettings(_tempDir) { SeedUntilRatio = 1.0, SeedUntilMinutes = 999 };
+        var (manager, _, connectionManagers, pieceManagers) = CreateManager(
+            new InMemorySessionStore(),
+            settings: settings,
+            seedingPolicyCheckInterval: TimeSpan.FromMilliseconds(30));
+
+        var session = await manager.AddAsync(new TorrentAddSource.TorrentFile(torrentBytes.ToArray()), null, false);
+        await manager.StartAsync(session.Id);
+        pieceManagers[session.Id].OnBlockReceived(0, 0, content);
+        Assert.Equal(TorrentState.Seeding, session.State);
+
+        // Simulate having downloaded the 100 bytes (ratio's denominator) and then
+        // uploaded the same amount again, reaching a 1.0 ratio.
+        connectionManagers[session.Id].BytesDownloaded = 100;
+        connectionManagers[session.Id].BytesUploaded = 100;
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (session.State == TorrentState.Seeding && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+
+        Assert.Equal(TorrentState.Completed, session.State);
+        Assert.True(session.SeedingLimitReached);
+        Assert.Equal(1.0, session.SeedRatio);
+        Assert.True(connectionManagers[session.Id].Disposed);
+    }
+
+    [Fact]
+    public async Task SeedingPolicy_LimitNotYetReached_KeepsSeedingAndBanksTransferredBytes()
+    {
+        var sourceDir = Path.Combine(_tempDir, "source");
+        Directory.CreateDirectory(sourceDir);
+        var sourceFile = Path.Combine(sourceDir, "content.bin");
+        var content = Enumerable.Range(0, 100).Select(b => (byte)b).ToArray();
+        await File.WriteAllBytesAsync(sourceFile, content);
+
+        var builtMetadata = Metadata.CreateFromPath(sourceFile);
+        using var torrentBytes = new MemoryStream();
+        builtMetadata.Save(torrentBytes);
+
+        var settings = new ClientSettings(_tempDir) { SeedUntilRatio = 10.0, SeedUntilMinutes = 999 };
+        var (manager, _, connectionManagers, pieceManagers) = CreateManager(
+            new InMemorySessionStore(),
+            settings: settings,
+            seedingPolicyCheckInterval: TimeSpan.FromMilliseconds(30));
+
+        var session = await manager.AddAsync(new TorrentAddSource.TorrentFile(torrentBytes.ToArray()), null, false);
+        await manager.StartAsync(session.Id);
+        pieceManagers[session.Id].OnBlockReceived(0, 0, content);
+
+        connectionManagers[session.Id].BytesDownloaded = 100;
+        connectionManagers[session.Id].BytesUploaded = 50;
+
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (session.TotalBytesUploaded < 50 && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+
+        Assert.Equal(TorrentState.Seeding, session.State);
+        Assert.False(session.SeedingLimitReached);
+        Assert.Equal(50, session.TotalBytesUploaded);
+        Assert.Equal(100, session.TotalBytesDownloaded);
     }
 
     [Fact]

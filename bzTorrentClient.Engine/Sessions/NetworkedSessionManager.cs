@@ -52,6 +52,9 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
 
     private readonly IDefaultTrackerListProvider _defaultTrackerListProvider;
 
+    private static readonly TimeSpan DefaultSeedingPolicyCheckInterval = TimeSpan.FromSeconds(5);
+    private readonly Timer _seedingPolicyTimer;
+
     public NetworkedSessionManager(
         ISessionManager inner,
         IClientSettings settings,
@@ -60,7 +63,8 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         Func<TorrentSession, ITorrentStorage, IPieceManager, IPeerConnectionManager>? connectionManagerFactory = null,
         TimeSpan? metadataFetchTimeout = null,
         TimeSpan? metadataRetryDelay = null,
-        IDefaultTrackerListProvider? defaultTrackerListProvider = null)
+        IDefaultTrackerListProvider? defaultTrackerListProvider = null,
+        TimeSpan? seedingPolicyCheckInterval = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -72,6 +76,16 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         _defaultTrackerListProvider = defaultTrackerListProvider ?? NullDefaultTrackerListProvider.Instance;
         _downloadLimiter = new TokenBucketRateLimiter(() => _settings.GlobalDownloadLimitBytesPerSecond);
         _uploadLimiter = new TokenBucketRateLimiter(() => _settings.GlobalUploadLimitBytesPerSecond);
+
+        // Enforces the seed-until-time/ratio settings and periodically banks transferred
+        // bytes onto each session - independent of the UI's own refresh timer, so the
+        // policy still applies even though nothing currently reads GetNetworkStats.
+        var checkInterval = seedingPolicyCheckInterval ?? DefaultSeedingPolicyCheckInterval;
+        _seedingPolicyTimer = new Timer(
+            _ => _ = ApplySeedingPolicyAsync(CancellationToken.None),
+            null,
+            checkInterval,
+            checkInterval);
     }
 
     public IReadOnlyCollection<TorrentSession> Sessions => _inner.Sessions;
@@ -321,12 +335,84 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
 
     public void Dispose()
     {
+        _seedingPolicyTimer.Dispose();
+
         lock (_runtimesLock)
         {
             foreach (var runtime in _runtimes.Values)
                 runtime.Dispose();
             _runtimes.Clear();
         }
+    }
+
+    /// <summary>
+    /// Banks newly-transferred bytes onto every session with a live runtime, and stops any
+    /// Seeding session that's hit its seed-until-time or seed-until-ratio limit. Runs on a
+    /// background timer, independent of whether anything is currently reading network
+    /// stats - a single session's failure here must not stop the rest from being checked.
+    /// </summary>
+    private async Task ApplySeedingPolicyAsync(CancellationToken cancellationToken)
+    {
+        List<(TorrentSession Session, TorrentRuntime Runtime)> snapshot;
+        lock (_runtimesLock)
+        {
+            snapshot = _inner.Sessions
+                .Select(s => (Session: s, Runtime: _runtimes.GetValueOrDefault(s.Id)))
+                .Where(t => t.Runtime is not null)
+                .Select(t => (t.Session, Runtime: t.Runtime!))
+                .ToList();
+        }
+
+        foreach (var (session, runtime) in snapshot)
+        {
+            try
+            {
+                var transferred = SampleTransferBytes(session, runtime);
+
+                if (session.State == TorrentState.Seeding && !session.SeedingLimitReached)
+                {
+                    var limitReached = session.TotalSeedingElapsed >= TimeSpan.FromMinutes(_settings.SeedUntilMinutes)
+                        || (session.SeedRatio is { } ratio && ratio >= _settings.SeedUntilRatio);
+
+                    if (limitReached)
+                    {
+                        session.StopSeedingDueToLimit();
+                        TearDownRuntime(session.Id);
+                        await _inner.SaveAsync(session.Id, cancellationToken);
+                        continue;
+                    }
+                }
+
+                // Persist newly-transferred bytes as they happen (rather than only at the
+                // next lifecycle transition) so an unclean shutdown loses at most one
+                // check interval's worth of progress toward the seed-until-ratio target.
+                if (transferred)
+                    await _inner.SaveAsync(session.Id, cancellationToken);
+            }
+            catch (Exception)
+            {
+                // Best-effort background policy tick.
+            }
+        }
+    }
+
+    /// <summary>Adds the delta since the last sample to the session's all-time transfer totals. Returns whether anything actually moved.</summary>
+    private static bool SampleTransferBytes(TorrentSession session, TorrentRuntime runtime)
+    {
+        var uploaded = runtime.ConnectionManager.BytesUploaded;
+        var downloaded = runtime.ConnectionManager.BytesDownloaded;
+
+        var deltaUploaded = Math.Max(0, uploaded - runtime.LastSampledBytesUploaded);
+        var deltaDownloaded = Math.Max(0, downloaded - runtime.LastSampledBytesDownloaded);
+
+        runtime.LastSampledBytesUploaded = uploaded;
+        runtime.LastSampledBytesDownloaded = downloaded;
+
+        if (deltaUploaded == 0 && deltaDownloaded == 0)
+            return false;
+
+        session.AddTransferredBytes(deltaUploaded, deltaDownloaded);
+        return true;
     }
 
     public int GetActiveConnectionCount(Guid sessionId)
@@ -538,6 +624,10 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         public IPeerSource PeerSource { get; }
         public IPieceManager PieceManager { get; set; } = null!;
         public IPeerConnectionManager ConnectionManager { get; set; } = null!;
+
+        /// <summary>Baseline for <see cref="NetworkedSessionManager.SampleTransferBytes"/> to diff against, since ConnectionManager's own counters reset each time a runtime is rebuilt.</summary>
+        public long LastSampledBytesUploaded { get; set; }
+        public long LastSampledBytesDownloaded { get; set; }
 
         public TorrentRuntime(ITorrentStorage storage, IPeerSource peerSource)
         {

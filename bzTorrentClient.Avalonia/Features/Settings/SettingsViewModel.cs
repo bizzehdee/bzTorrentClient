@@ -36,6 +36,12 @@ public partial class SettingsViewModel : ViewModelBase
     private string _defaultTrackerListText;
 
     [ObservableProperty]
+    private int _seedUntilMinutes;
+
+    [ObservableProperty]
+    private double _seedUntilRatio;
+
+    [ObservableProperty]
     private string? _errorMessage;
 
     /// <summary>Raised once settings are validated and persisted; the view closes the dialog on this.</summary>
@@ -56,6 +62,8 @@ public partial class SettingsViewModel : ViewModelBase
         _uploadLimitKBps = (int)(settings.GlobalUploadLimitBytesPerSecond / 1024);
         _defaultTrackerListUrl = settings.DefaultTrackerListUrl;
         _defaultTrackerListText = settings.DefaultTrackerListText;
+        _seedUntilMinutes = settings.SeedUntilMinutes;
+        _seedUntilRatio = settings.SeedUntilRatio;
 
         SaveCommand = new RelayCommand(Save);
     }
@@ -92,6 +100,18 @@ public partial class SettingsViewModel : ViewModelBase
             return;
         }
 
+        if (SeedUntilMinutes <= 0)
+        {
+            ErrorMessage = "Seed-until-time must be a positive number of minutes.";
+            return;
+        }
+
+        if (SeedUntilRatio <= 0)
+        {
+            ErrorMessage = "Seed-until-ratio must be a positive number.";
+            return;
+        }
+
         try
         {
             _settings.DefaultDownloadDirectory = DefaultDownloadDirectory;
@@ -102,6 +122,8 @@ public partial class SettingsViewModel : ViewModelBase
             _settings.GlobalUploadLimitBytesPerSecond = (long)UploadLimitKBps * 1024;
             _settings.DefaultTrackerListUrl = DefaultTrackerListUrl.Trim();
             _settings.DefaultTrackerListText = DefaultTrackerListText;
+            _settings.SeedUntilMinutes = SeedUntilMinutes;
+            _settings.SeedUntilRatio = SeedUntilRatio;
             _settingsStore.Save(_settings);
         }
         catch (Exception ex)

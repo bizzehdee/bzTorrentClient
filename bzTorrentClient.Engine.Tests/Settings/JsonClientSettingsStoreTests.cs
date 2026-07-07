@@ -36,6 +36,8 @@ public class JsonClientSettingsStoreTests : IDisposable
             GlobalUploadLimitBytesPerSecond = 128_000,
             DefaultTrackerListUrl = "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best_ip.txt",
             DefaultTrackerListText = "udp://tracker.example.com:1337/announce\nhttp://tracker2.example.com/announce",
+            SeedUntilMinutes = 120,
+            SeedUntilRatio = 2.5,
         };
 
         store.Save(settings);
@@ -49,6 +51,8 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.Equal(128_000, reloaded.GlobalUploadLimitBytesPerSecond);
         Assert.Equal(settings.DefaultTrackerListUrl, reloaded.DefaultTrackerListUrl);
         Assert.Equal(settings.DefaultTrackerListText, reloaded.DefaultTrackerListText);
+        Assert.Equal(120, reloaded.SeedUntilMinutes);
+        Assert.Equal(2.5, reloaded.SeedUntilRatio);
     }
 
     [Fact]

@@ -13,6 +13,24 @@ public sealed class TorrentSession
     public bool[] PieceCompletion { get; private set; }
     public string? LastError { get; private set; }
 
+    /// <summary>All-time cumulative bytes uploaded/downloaded for this torrent, persisted across restarts - the basis for the seed-until-ratio setting.</summary>
+    public long TotalBytesUploaded { get; private set; }
+    public long TotalBytesDownloaded { get; private set; }
+
+    /// <summary>Seeding time banked from prior seeding periods (before whatever's currently running), persisted across restarts.</summary>
+    public TimeSpan SeedingElapsedBeforeThisRun { get; private set; }
+
+    /// <summary>Set while actively Seeding; null the rest of the time. Persisted so a period of seeding survives an app restart without losing its elapsed time.</summary>
+    public DateTime? CurrentSeedingStartedAtUtc { get; private set; }
+
+    /// <summary>
+    /// Once the seed-until-time/ratio policy has stopped this torrent automatically, this
+    /// is set and stays set - per the user's intent, once they restart seeding after a
+    /// limit was reached they mean "seed forever until I manually stop it", not "re-apply
+    /// the same limit again".
+    /// </summary>
+    public bool SeedingLimitReached { get; private set; }
+
     public TorrentSession(TorrentAddSource source, IMetadata metadata, string downloadDirectory)
         : this(
             Guid.NewGuid(),
@@ -32,7 +50,12 @@ public sealed class TorrentSession
         string downloadDirectory,
         TorrentState state,
         DateTime addedAtUtc,
-        bool[] pieceCompletion)
+        bool[] pieceCompletion,
+        long totalBytesUploaded = 0,
+        long totalBytesDownloaded = 0,
+        TimeSpan? seedingElapsedBeforeThisRun = null,
+        DateTime? currentSeedingStartedAtUtc = null,
+        bool seedingLimitReached = false)
     {
         if (string.IsNullOrWhiteSpace(downloadDirectory))
             throw new ArgumentException("Download directory must not be empty.", nameof(downloadDirectory));
@@ -44,6 +67,11 @@ public sealed class TorrentSession
         State = state;
         AddedAtUtc = addedAtUtc;
         PieceCompletion = pieceCompletion ?? Array.Empty<bool>();
+        TotalBytesUploaded = totalBytesUploaded;
+        TotalBytesDownloaded = totalBytesDownloaded;
+        SeedingElapsedBeforeThisRun = seedingElapsedBeforeThisRun ?? TimeSpan.Zero;
+        CurrentSeedingStartedAtUtc = currentSeedingStartedAtUtc;
+        SeedingLimitReached = seedingLimitReached;
     }
 
     public double ProgressFraction =>
@@ -51,6 +79,20 @@ public sealed class TorrentSession
 
     public bool IsFullyVerified =>
         PieceCompletion.Length > 0 && Array.TrueForAll(PieceCompletion, done => done);
+
+    /// <summary>Total time spent Seeding, across every seeding period this torrent has ever had (including one currently in progress).</summary>
+    public TimeSpan TotalSeedingElapsed =>
+        SeedingElapsedBeforeThisRun + (CurrentSeedingStartedAtUtc is { } startedAt ? DateTime.UtcNow - startedAt : TimeSpan.Zero);
+
+    /// <summary>All-time upload/download ratio for this torrent, or null if nothing's been downloaded yet (ratio is undefined, not zero or infinite).</summary>
+    public double? SeedRatio => TotalBytesDownloaded > 0 ? (double)TotalBytesUploaded / TotalBytesDownloaded : null;
+
+    /// <summary>Adds to the all-time transferred-byte totals - call as new bytes are observed, regardless of current state.</summary>
+    public void AddTransferredBytes(long uploaded, long downloaded)
+    {
+        TotalBytesUploaded += uploaded;
+        TotalBytesDownloaded += downloaded;
+    }
 
     // --- User-driven lifecycle transitions ---
 
@@ -81,6 +123,9 @@ public sealed class TorrentSession
             default:
                 throw new InvalidOperationException($"Unhandled state {State}.");
         }
+
+        if (State == TorrentState.Seeding)
+            CurrentSeedingStartedAtUtc ??= DateTime.UtcNow;
     }
 
     /// <summary>
@@ -90,6 +135,8 @@ public sealed class TorrentSession
     /// </summary>
     public void Pause()
     {
+        BankSeedingClock();
+
         switch (State)
         {
             case TorrentState.Active:
@@ -117,7 +164,33 @@ public sealed class TorrentSession
     /// </summary>
     public void Stop()
     {
+        BankSeedingClock();
         State = TorrentState.Stopped;
+    }
+
+    /// <summary>
+    /// Automatic stop triggered by the seed-until-time/ratio policy: Seeding -> Completed.
+    /// Marks the per-torrent seed limit as reached, so a later manual <see cref="Start"/>
+    /// seeds forever instead of re-applying the same limit.
+    /// </summary>
+    public void StopSeedingDueToLimit()
+    {
+        if (State != TorrentState.Seeding)
+            throw new InvalidOperationException($"Cannot stop seeding from state {State}.");
+
+        BankSeedingClock();
+        SeedingLimitReached = true;
+        State = TorrentState.Completed;
+    }
+
+    /// <summary>Banks elapsed time from the current seeding period (if any) into <see cref="SeedingElapsedBeforeThisRun"/> and clears the live clock.</summary>
+    private void BankSeedingClock()
+    {
+        if (CurrentSeedingStartedAtUtc is not { } startedAt)
+            return;
+
+        SeedingElapsedBeforeThisRun += DateTime.UtcNow - startedAt;
+        CurrentSeedingStartedAtUtc = null;
     }
 
     // --- Engine-driven transitions (verification pipeline) ---
@@ -170,7 +243,10 @@ public sealed class TorrentSession
         PieceCompletion[pieceIndex] = true;
 
         if (State == TorrentState.Active && IsFullyVerified)
+        {
             State = TorrentState.Seeding;
+            CurrentSeedingStartedAtUtc ??= DateTime.UtcNow;
+        }
     }
 
     /// <summary>

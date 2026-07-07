@@ -14,4 +14,10 @@ public sealed class TorrentSessionEntity
     public byte[] PieceCompletion { get; set; } = Array.Empty<byte>();
     public int PieceCount { get; set; }
     public DateTime AddedAtUtc { get; set; }
+
+    public long TotalBytesUploaded { get; set; }
+    public long TotalBytesDownloaded { get; set; }
+    public long SeedingElapsedBeforeThisRunTicks { get; set; }
+    public DateTime? CurrentSeedingStartedAtUtc { get; set; }
+    public bool SeedingLimitReached { get; set; }
 }

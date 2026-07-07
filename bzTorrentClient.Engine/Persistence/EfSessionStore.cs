@@ -31,7 +31,12 @@ public sealed class EfSessionStore : ISessionStore
                 entity.DownloadDirectory,
                 entity.State,
                 entity.AddedAtUtc,
-                pieceCompletion));
+                pieceCompletion,
+                entity.TotalBytesUploaded,
+                entity.TotalBytesDownloaded,
+                TimeSpan.FromTicks(entity.SeedingElapsedBeforeThisRunTicks),
+                entity.CurrentSeedingStartedAtUtc,
+                entity.SeedingLimitReached));
         }
 
         return sessions;
@@ -57,6 +62,11 @@ public sealed class EfSessionStore : ISessionStore
         entity.PieceCount = session.PieceCompletion.Length;
         entity.PieceCompletion = PackBits(session.PieceCompletion);
         entity.AddedAtUtc = session.AddedAtUtc;
+        entity.TotalBytesUploaded = session.TotalBytesUploaded;
+        entity.TotalBytesDownloaded = session.TotalBytesDownloaded;
+        entity.SeedingElapsedBeforeThisRunTicks = session.SeedingElapsedBeforeThisRun.Ticks;
+        entity.CurrentSeedingStartedAtUtc = session.CurrentSeedingStartedAtUtc;
+        entity.SeedingLimitReached = session.SeedingLimitReached;
 
         switch (session.Source)
         {

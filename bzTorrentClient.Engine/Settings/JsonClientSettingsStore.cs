@@ -37,6 +37,8 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
                 GlobalUploadLimitBytesPerSecond = Math.Max(0, dto.GlobalUploadLimitBytesPerSecond),
                 DefaultTrackerListUrl = dto.DefaultTrackerListUrl ?? string.Empty,
                 DefaultTrackerListText = dto.DefaultTrackerListText ?? string.Empty,
+                SeedUntilMinutes = dto.SeedUntilMinutes > 0 ? dto.SeedUntilMinutes : new ClientSettings().SeedUntilMinutes,
+                SeedUntilRatio = dto.SeedUntilRatio > 0 ? dto.SeedUntilRatio : new ClientSettings().SeedUntilRatio,
             };
         }
         catch (JsonException)
@@ -59,6 +61,8 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
             GlobalUploadLimitBytesPerSecond = settings.GlobalUploadLimitBytesPerSecond,
             DefaultTrackerListUrl = settings.DefaultTrackerListUrl,
             DefaultTrackerListText = settings.DefaultTrackerListText,
+            SeedUntilMinutes = settings.SeedUntilMinutes,
+            SeedUntilRatio = settings.SeedUntilRatio,
         };
 
         var directory = Path.GetDirectoryName(_filePath);
@@ -78,5 +82,7 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
         public long GlobalUploadLimitBytesPerSecond { get; set; }
         public string DefaultTrackerListUrl { get; set; } = string.Empty;
         public string DefaultTrackerListText { get; set; } = string.Empty;
+        public int SeedUntilMinutes { get; set; }
+        public double SeedUntilRatio { get; set; }
     }
 }
