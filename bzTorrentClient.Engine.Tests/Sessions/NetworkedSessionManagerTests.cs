@@ -618,16 +618,31 @@ public class NetworkedSessionManagerTests : IDisposable
 
         await manager.StartAsync(session.Id);
 
-        // Each attempt subscribes to PeerFound exactly once; wait for at least a second
-        // attempt to start, proving the loop didn't stop after the first failure. Also
-        // wait for the stub connection manager to start (between-attempts, once the first
-        // one fails) so the swarm can keep growing while later attempts try their luck.
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while ((peerSources[session.Id].SubscribeCount < 2 || !connectionManagers[session.Id].Started) && DateTime.UtcNow < deadline)
-            await Task.Delay(TimeSpan.FromMilliseconds(20));
+        // The stub connection manager is started exactly once, between the first failed
+        // attempt and the retry, so the swarm keeps growing while later attempts try their
+        // luck. Wait for that, then for a *further* fetch attempt to begin (one more
+        // PeerFound subscription than were in place when it started) - which proves the loop
+        // kept retrying rather than stopping after the first failure. Baseline the count at
+        // the moment Start happens rather than hard-coding it: the connection manager also
+        // subscribes to PeerFound at build time, so the absolute count isn't just an
+        // attempt counter. Deadline is generous because under parallel-test thread-pool
+        // load the first attempt's fetch can take a beat to wind down.
+        int? countWhenStarted = null;
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (connectionManagers[session.Id].Started)
+            {
+                countWhenStarted ??= peerSources[session.Id].SubscribeCount;
+                if (peerSources[session.Id].SubscribeCount > countWhenStarted)
+                    break;
+            }
 
-        Assert.True(peerSources[session.Id].SubscribeCount >= 2);
+            await Task.Delay(TimeSpan.FromMilliseconds(20));
+        }
+
         Assert.True(connectionManagers[session.Id].Started);
+        Assert.True(countWhenStarted is not null && peerSources[session.Id].SubscribeCount > countWhenStarted);
 
         manager.Dispose();
     }

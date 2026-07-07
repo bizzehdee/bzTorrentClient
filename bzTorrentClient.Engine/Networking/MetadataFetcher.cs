@@ -57,9 +57,7 @@ public static class MetadataFetcher
             await using var registration = timeoutCts.Token.Register(() => completion.TrySetResult(false)).ConfigureAwait(false);
 
             var workers = Enumerable.Range(0, WorkerCount)
-                .Select(_ => Task.Run(
-                    () => WorkerLoop(metadata, candidates, peerAvailable, localPeerId, completion, timeoutCts.Token),
-                    CancellationToken.None))
+                .Select(_ => WorkerLoopAsync(metadata, candidates, peerAvailable, localPeerId, completion, timeoutCts.Token))
                 .ToArray();
 
             var succeeded = await completion.Task.ConfigureAwait(false);
@@ -73,7 +71,7 @@ public static class MetadataFetcher
         }
     }
 
-    private static void WorkerLoop(
+    private static async Task WorkerLoopAsync(
         Metadata metadata,
         ConcurrentQueue<IPEndPoint> candidates,
         SemaphoreSlim peerAvailable,
@@ -87,7 +85,13 @@ public static class MetadataFetcher
             {
                 try
                 {
-                    peerAvailable.Wait(200, cancellationToken);
+                    // Await (don't block) while no candidate is queued: an idle worker parks
+                    // instead of pinning a thread-pool thread. With WorkerCount blocking waits
+                    // this used to hold WorkerCount threads doing nothing until peers arrived -
+                    // and across many concurrent magnet fetches that was enough to starve the
+                    // pool and stall the very continuations that drive the fetch (and its retry
+                    // loop) forward.
+                    await peerAvailable.WaitAsync(200, cancellationToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -97,7 +101,13 @@ public static class MetadataFetcher
                 continue;
             }
 
-            if (TryFetchFromPeer(metadata, endpoint, localPeerId, cancellationToken))
+            // The per-peer fetch is synchronous socket I/O; offload it so it runs on its own
+            // pool thread and this worker keeps its "scattergun" concurrency (WorkerCount peers
+            // in flight at once) without a blocked async continuation for the whole per-peer
+            // timeout.
+            if (await Task.Run(
+                    () => TryFetchFromPeer(metadata, endpoint, localPeerId, cancellationToken),
+                    CancellationToken.None).ConfigureAwait(false))
             {
                 completion.TrySetResult(true);
                 return;

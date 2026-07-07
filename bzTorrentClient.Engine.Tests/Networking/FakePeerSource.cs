@@ -7,7 +7,7 @@ internal sealed class FakePeerSource : IPeerSource
 {
     private Action<IPEndPoint>? _peerFound;
 
-    /// <summary>How many times something has subscribed to <see cref="PeerFound"/> — each call to MetadataFetcher.TryFetchAsync subscribes exactly once, so this doubles as an attempt counter.</summary>
+    /// <summary>How many times something has subscribed to <see cref="PeerFound"/> — the connection manager subscribes once when built, and each MetadataFetcher.TryFetchAsync attempt subscribes once more, so a rising count tracks (retry) fetch attempts once the runtime exists.</summary>
     public int SubscribeCount { get; private set; }
 
     public event Action<IPEndPoint>? PeerFound
