@@ -24,6 +24,7 @@ internal sealed class FakePeerSource : IPeerSource
     public int DhtPeersFound { get; set; }
     public int LanPeersFound { get; set; }
     public int DhtNodeCount { get; set; }
+    public IReadOnlyCollection<TrackerStatus> TrackerStatuses { get; set; } = Array.Empty<TrackerStatus>();
 
     public void Start() => Started = true;
     public void Stop() => Stopped = true;

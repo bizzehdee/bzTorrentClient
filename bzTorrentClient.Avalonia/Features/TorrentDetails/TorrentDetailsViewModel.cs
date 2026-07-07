@@ -54,7 +54,7 @@ public partial class TorrentDetailsViewModel : ViewModelBase
 
     public ObservableCollection<PeerRowViewModel> Peers { get; } = new();
     public ObservableCollection<FileRowViewModel> Files { get; } = new();
-    public ObservableCollection<string> Trackers { get; } = new();
+    public ObservableCollection<TrackerRowViewModel> Trackers { get; } = new();
     public ObservableCollection<PieceMapCell> PieceMap { get; } = new();
 
     public TorrentDetailsViewModel(ISessionManager sessionManager)
@@ -84,7 +84,7 @@ public partial class TorrentDetailsViewModel : ViewModelBase
         InfoHash = session.Metadata.HashString;
         DownloadDirectory = session.DownloadDirectory;
 
-        ReplaceAll(Trackers, session.Metadata.AnnounceList);
+        ReplaceAll(Trackers, BuildTrackerRows(session));
         ReplaceAll(Files, BuildFileRows(session));
 
         var totalSize = session.Metadata.GetFileInfos().Sum(f => f.FileSize);
@@ -152,6 +152,19 @@ public partial class TorrentDetailsViewModel : ViewModelBase
         Files.Clear();
         Peers.Clear();
         PieceMap.Clear();
+    }
+
+    private IEnumerable<TrackerRowViewModel> BuildTrackerRows(TorrentSession session)
+    {
+        var statuses = (_runtimeInfoProvider?.GetTrackerStatuses(session.Id) ?? Array.Empty<TrackerStatus>())
+            .ToDictionary(s => s.Url, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tracker in session.Metadata.AnnounceList)
+        {
+            yield return statuses.TryGetValue(tracker, out var status)
+                ? new TrackerRowViewModel(tracker, status.PeersFound, status.Seeders, status.Leechers, status.LastAnnounceUtc, status.LastError)
+                : new TrackerRowViewModel(tracker, PeersFound: 0, Seeders: null, Leechers: null, LastAnnounceUtc: null, LastError: null);
+        }
     }
 
     /// <summary>

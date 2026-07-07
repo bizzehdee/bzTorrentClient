@@ -16,4 +16,7 @@ public interface ITorrentRuntimeInfoProvider
 
     /// <summary>Returns <see cref="TorrentNetworkStats.Empty"/> if the torrent has no active runtime (never started, or stopped).</summary>
     TorrentNetworkStats GetNetworkStats(Guid sessionId);
+
+    /// <summary>Per-tracker announce state for this torrent. Empty if it has no active runtime.</summary>
+    IReadOnlyCollection<TrackerStatus> GetTrackerStatuses(Guid sessionId);
 }

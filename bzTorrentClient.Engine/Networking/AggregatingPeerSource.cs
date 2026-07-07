@@ -42,12 +42,15 @@ public sealed class AggregatingPeerSource : IPeerSource
     private int _dhtPeersFound;
     private int _lanPeersFound;
 
+    private readonly ConcurrentDictionary<string, TrackerStatus> _trackerStatuses = new();
+
     public event Action<IPEndPoint>? PeerFound;
 
     public int TrackerPeersFound => Volatile.Read(ref _trackerPeersFound);
     public int DhtPeersFound => Volatile.Read(ref _dhtPeersFound);
     public int LanPeersFound => Volatile.Read(ref _lanPeersFound);
     public int DhtNodeCount => _dhtPeerFinder?.NodeCount ?? 0;
+    public IReadOnlyCollection<TrackerStatus> TrackerStatuses => _trackerStatuses.Values.ToList();
 
     public AggregatingPeerSource(
         IMetadata metadata,
@@ -210,6 +213,15 @@ public sealed class AggregatingPeerSource : IPeerSource
                 foreach (var peer in peers)
                     OnPeerFound(peer);
 
+                var priorPeersFound = _trackerStatuses.TryGetValue(tracker, out var priorStatus) ? priorStatus.PeersFound : 0;
+                _trackerStatuses[tracker] = new TrackerStatus(
+                    tracker,
+                    PeersFound: priorPeersFound + peers.Count,
+                    Seeders: announceInfo.Seeders,
+                    Leechers: announceInfo.Leechers,
+                    LastAnnounceUtc: DateTime.UtcNow,
+                    LastError: null);
+
                 var interval = TimeSpan.FromSeconds(Math.Max(announceInfo.WaitTime, (int)MinTrackerAnnounceInterval.TotalSeconds));
                 if (!await AsyncUtil.TryDelay(interval, cancellationToken))
                     return;
@@ -217,6 +229,11 @@ public sealed class AggregatingPeerSource : IPeerSource
             else
             {
                 consecutiveFailures++;
+
+                _trackerStatuses[tracker] = _trackerStatuses.TryGetValue(tracker, out var lastGoodStatus)
+                    ? lastGoodStatus with { LastError = "Announce failed" }
+                    : new TrackerStatus(tracker, PeersFound: 0, Seeders: 0, Leechers: 0, LastAnnounceUtc: null, LastError: "Announce failed");
+
                 if (consecutiveFailures >= MaxConsecutiveTrackerFailures)
                 {
                     // A tracker that's failed this many times in a row for this session is
@@ -228,6 +245,7 @@ public sealed class AggregatingPeerSource : IPeerSource
                         _metadata.AnnounceList.Remove(tracker);
                     }
 
+                    _trackerStatuses.TryRemove(tracker, out _);
                     return;
                 }
 

@@ -14,6 +14,7 @@ internal class FakeSessionManager : ISessionManager, ITorrentRuntimeInfoProvider
     public Dictionary<Guid, int> PeerCounts { get; } = new();
     public Dictionary<Guid, List<PeerConnectionInfo>> ConnectedPeers { get; } = new();
     public Dictionary<Guid, TorrentNetworkStats> NetworkStats { get; } = new();
+    public Dictionary<Guid, List<TrackerStatus>> TrackerStatuses { get; } = new();
 
     /// <summary>When set, <see cref="StartAsync"/> delays this long before completing for <see cref="SlowStartSessionId"/>.</summary>
     public TimeSpan StartDelay { get; set; } = TimeSpan.Zero;
@@ -87,4 +88,7 @@ internal class FakeSessionManager : ISessionManager, ITorrentRuntimeInfoProvider
 
     public TorrentNetworkStats GetNetworkStats(Guid sessionId) =>
         NetworkStats.TryGetValue(sessionId, out var stats) ? stats : TorrentNetworkStats.Empty;
+
+    public IReadOnlyCollection<TrackerStatus> GetTrackerStatuses(Guid sessionId) =>
+        TrackerStatuses.TryGetValue(sessionId, out var statuses) ? statuses : Array.Empty<TrackerStatus>();
 }

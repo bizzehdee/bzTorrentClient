@@ -19,6 +19,9 @@ public interface IPeerSource : IDisposable
     /// <summary>Size of this torrent's own DHT routing table — 0 if DHT is disabled (private torrent) or not yet bootstrapped.</summary>
     int DhtNodeCount { get; }
 
+    /// <summary>Per-tracker announce state (peers/seeds/leechers gained, last announce time), one entry per tracker this torrent still has in its announce list.</summary>
+    IReadOnlyCollection<TrackerStatus> TrackerStatuses { get; }
+
     void Start();
     void Stop();
 }

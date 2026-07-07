@@ -26,6 +26,45 @@ public class TorrentDetailsViewModelTests : IDisposable
         TorrentAddSource.Magnet.FromInfoHash(hashHex);
 
     [Fact]
+    public async Task ShowSession_TrackerWithRuntimeStatus_PopulatesTrackerRow()
+    {
+        var sessionManager = new FakeSessionManager();
+        var magnetUri = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&tr=http://tracker.example/announce";
+        var session = await sessionManager.AddAsync(new TorrentAddSource.Magnet(magnetUri), "/downloads", false);
+        var lastAnnounce = DateTime.UtcNow;
+        sessionManager.TrackerStatuses[session.Id] = new List<TrackerStatus>
+        {
+            new("http://tracker.example/announce", PeersFound: 7, Seeders: 3, Leechers: 2, LastAnnounceUtc: lastAnnounce, LastError: null),
+        };
+        var viewModel = new TorrentDetailsViewModel(sessionManager);
+
+        viewModel.ShowSession(session.Id);
+
+        var row = Assert.Single(viewModel.Trackers);
+        Assert.Equal("http://tracker.example/announce", row.Url);
+        Assert.Equal(7, row.PeersFound);
+        Assert.Equal("3", row.SeedersText);
+        Assert.Equal("2", row.LeechersText);
+        Assert.NotEqual("Not yet announced", row.LastAnnounceText);
+    }
+
+    [Fact]
+    public async Task ShowSession_TrackerWithNoRuntimeStatusYet_ShowsNotYetAnnounced()
+    {
+        var sessionManager = new FakeSessionManager();
+        var magnetUri = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&tr=http://tracker.example/announce";
+        var session = await sessionManager.AddAsync(new TorrentAddSource.Magnet(magnetUri), "/downloads", false);
+        var viewModel = new TorrentDetailsViewModel(sessionManager);
+
+        viewModel.ShowSession(session.Id);
+
+        var row = Assert.Single(viewModel.Trackers);
+        Assert.Equal("—", row.SeedersText);
+        Assert.Equal("—", row.LeechersText);
+        Assert.Equal("Not yet announced", row.LastAnnounceText);
+    }
+
+    [Fact]
     public void ShowSession_NoSelection_HasSelectionIsFalse()
     {
         var viewModel = new TorrentDetailsViewModel(new FakeSessionManager());

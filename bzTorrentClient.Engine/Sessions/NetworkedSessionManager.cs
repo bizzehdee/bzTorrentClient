@@ -433,6 +433,16 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         }
     }
 
+    public IReadOnlyCollection<TrackerStatus> GetTrackerStatuses(Guid sessionId)
+    {
+        lock (_runtimesLock)
+        {
+            return _runtimes.TryGetValue(sessionId, out var runtime)
+                ? runtime.PeerSource.TrackerStatuses
+                : Array.Empty<TrackerStatus>();
+        }
+    }
+
     public TorrentNetworkStats GetNetworkStats(Guid sessionId)
     {
         lock (_runtimesLock)

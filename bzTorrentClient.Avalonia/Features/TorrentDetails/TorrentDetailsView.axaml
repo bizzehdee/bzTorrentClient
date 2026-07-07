@@ -104,8 +104,16 @@
                 <TabItem Header="Trackers">
                     <ListBox ItemsSource="{Binding Trackers}" Background="Transparent">
                         <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Classes="Body" Text="{Binding}" TextTrimming="CharacterEllipsis"/>
+                            <DataTemplate x:DataType="vm:TrackerRowViewModel">
+                                <StackPanel Spacing="2" Margin="0,4">
+                                    <TextBlock Classes="Body" Text="{Binding Url}" TextTrimming="CharacterEllipsis"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="12">
+                                        <TextBlock Classes="Caption" Text="{Binding PeersFound, StringFormat='{}{0} peers found'}"/>
+                                        <TextBlock Classes="Caption" Text="{Binding SeedersText, StringFormat='{}{0} seeds'}"/>
+                                        <TextBlock Classes="Caption" Text="{Binding LeechersText, StringFormat='{}{0} leeches'}"/>
+                                        <TextBlock Classes="Caption" Text="{Binding LastAnnounceText}"/>
+                                    </StackPanel>
+                                </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>

@@ -256,4 +256,77 @@ public class AggregatingPeerSourceTests
         Assert.True(signalled);
         Assert.Contains("http://flaky-tracker.example/announce", metadata.AnnounceList);
     }
+
+    [Fact]
+    public async Task PollTracker_SuccessfulAnnounce_RecordsTrackerStatus()
+    {
+        var announced = new SemaphoreSlim(0);
+        var trackerClient = new FakeTrackerClient(request =>
+        {
+            var info = new AnnounceInfo(
+                new[] { new IPEndPoint(IPAddress.Parse("10.0.0.1"), 6001), new IPEndPoint(IPAddress.Parse("10.0.0.2"), 6002) },
+                waitTime: 3600, seeders: 5, leechers: 2);
+            announced.Release();
+            return info;
+        });
+
+        var metadata = new FakeMetadata(1);
+        metadata.AnnounceList.Add("http://tracker.example/announce");
+
+        var source = new AggregatingPeerSource(
+            metadata,
+            listenPort: 6881,
+            localPeerId: "-bz0001-000000000000",
+            trackerClientFactory: _ => trackerClient,
+            dhtPeerFinderFactory: () => new FakePeerFinder(),
+            lanPeerFinderFactory: () => new FakePeerFinder());
+
+        source.Start();
+        await announced.WaitAsync(TimeSpan.FromSeconds(5));
+        source.Stop();
+
+        var status = Assert.Single(source.TrackerStatuses);
+        Assert.Equal("http://tracker.example/announce", status.Url);
+        Assert.Equal(2, status.PeersFound);
+        Assert.Equal(5, status.Seeders);
+        Assert.Equal(2, status.Leechers);
+        Assert.NotNull(status.LastAnnounceUtc);
+        Assert.Null(status.LastError);
+    }
+
+    [Fact]
+    public async Task PollTracker_FailingTracker_RecordsLastErrorUntilDropped()
+    {
+        var metadata = new FakeMetadata(1);
+        metadata.AnnounceList.Add("http://dead-tracker.example/announce");
+
+        var source = new AggregatingPeerSource(
+            metadata,
+            listenPort: 6881,
+            localPeerId: "-bz0001-000000000000",
+            trackerClientFactory: _ => new FakeTrackerClient(_ => null),
+            dhtPeerFinderFactory: () => new FakePeerFinder(),
+            lanPeerFinderFactory: () => new FakePeerFinder(),
+            trackerFailureRetryDelay: TimeSpan.FromSeconds(5));
+
+        source.Start();
+
+        // Caught mid-flight, before the 3rd failure drops the tracker entirely (that
+        // scenario is covered by PollTracker_FailsRepeatedly_RemovesTrackerFromAnnounceList).
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        TrackerStatus? status = null;
+        while (DateTime.UtcNow < deadline)
+        {
+            status = source.TrackerStatuses.FirstOrDefault();
+            if (status is not null)
+                break;
+            await Task.Delay(20);
+        }
+
+        source.Stop();
+
+        Assert.NotNull(status);
+        Assert.Null(status!.LastAnnounceUtc);
+        Assert.NotNull(status.LastError);
+    }
 }
