@@ -44,15 +44,21 @@ public class AggregatingPeerSourceTests
     [Fact]
     public async Task Start_AnnouncesToTrackers_AtMostThreeConcurrently()
     {
-        // Many trackers, each announce held open briefly so overlaps are observable. The
-        // throttle must let more than one run at once (not the old trickle) but never more
-        // than three.
+        // Many trackers, each announce held open until released so overlaps are observable.
+        // The throttle must let more than one run at once (not the old trickle) but never
+        // more than three.
         const int trackerCount = 9;
         var concurrent = 0;
         var maxConcurrent = 0;
         var maxLock = new object();
         var announcedTrackers = new ConcurrentDictionary<string, byte>();
         var allAnnounced = new CountdownEvent(trackerCount);
+
+        // Each announce parks here until the test observes the peak concurrency, so the
+        // measurement doesn't hinge on the thread pool happening to run several tasks within a
+        // fixed sleep window (which, on a cold/constrained CI pool, it may not - it injects
+        // worker threads only gradually). Released once we've seen the throttle fill up.
+        using var release = new ManualResetEventSlim(false);
 
         AnnounceInfo Respond(AnnounceRequest request)
         {
@@ -63,7 +69,7 @@ public class AggregatingPeerSourceTests
                     maxConcurrent = now;
             }
 
-            Thread.Sleep(150); // hold the announce open so concurrent announces actually overlap
+            release.Wait(TimeSpan.FromSeconds(10));
             Interlocked.Decrement(ref concurrent);
 
             if (announcedTrackers.TryAdd(request.Url, 0))
@@ -85,13 +91,45 @@ public class AggregatingPeerSourceTests
             dhtPeerFinderFactory: () => new FakePeerFinder(),
             lanPeerFinderFactory: () => new FakePeerFinder());
 
-        source.Start();
-        var everyTrackerAnnounced = allAnnounced.Wait(TimeSpan.FromSeconds(10));
-        source.Stop();
+        // Guarantee the pool can actually run the throttle's worth of announces at once, so a
+        // slow-to-grow CI thread pool doesn't make genuine concurrency look like serialization.
+        ThreadPool.GetMinThreads(out var minWorker, out var minIo);
+        ThreadPool.SetMinThreads(Math.Max(minWorker, trackerCount + 4), minIo);
 
-        Assert.True(everyTrackerAnnounced, "every tracker should get to announce");
-        Assert.True(maxConcurrent <= 3, $"announces must be capped at 3 at a time, saw {maxConcurrent}");
-        Assert.True(maxConcurrent >= 2, $"announces should run concurrently, not one at a time; saw {maxConcurrent}");
+        try
+        {
+            source.Start();
+
+            // Wait until the throttle is saturated (3 announces held open at once), then let
+            // them all proceed. Deadline guards against a regression that never reaches 3.
+            var reachedCap = await SpinUntilAsync(() => Volatile.Read(ref maxConcurrent) >= 3, TimeSpan.FromSeconds(10));
+            release.Set();
+
+            var everyTrackerAnnounced = allAnnounced.Wait(TimeSpan.FromSeconds(10));
+            source.Stop();
+
+            Assert.True(everyTrackerAnnounced, "every tracker should get to announce");
+            Assert.True(reachedCap, $"announces should run 3-at-a-time, not serialized; peak seen was {maxConcurrent}");
+            Assert.True(maxConcurrent <= 3, $"announces must be capped at 3 at a time, saw {maxConcurrent}");
+        }
+        finally
+        {
+            release.Set();
+            ThreadPool.SetMinThreads(minWorker, minIo);
+        }
+    }
+
+    private static async Task<bool> SpinUntilAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition())
+                return true;
+            await Task.Delay(20);
+        }
+
+        return condition();
     }
 
     [Fact]
