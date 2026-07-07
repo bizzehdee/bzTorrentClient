@@ -32,4 +32,10 @@ public interface IClientSettings
 
     /// <summary>Upload/download ratio to keep seeding until, before the seed-until policy stops it automatically (unless <see cref="SeedUntilMinutes"/> elapses first). Default 1.0.</summary>
     double SeedUntilRatio { get; set; }
+
+    /// <summary>
+    /// Remembered answer to "also delete downloaded files?" when removing a torrent, set
+    /// when the user checks "don't ask me again" on that dialog. Null means always ask.
+    /// </summary>
+    bool? RememberedDeleteFilesOnRemove { get; set; }
 }

@@ -321,7 +321,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         TearDownRuntime(sessionId);
     }
 
-    public async Task RemoveAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    public async Task RemoveAsync(Guid sessionId, bool deleteFiles = false, CancellationToken cancellationToken = default)
     {
         TearDownRuntime(sessionId);
 
@@ -330,7 +330,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
             _verifiedSessionIds.Remove(sessionId);
         }
 
-        await _inner.RemoveAsync(sessionId, cancellationToken);
+        await _inner.RemoveAsync(sessionId, deleteFiles, cancellationToken);
     }
 
     public void Dispose()

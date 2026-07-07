@@ -89,7 +89,7 @@ public class TorrentListViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task PauseStopRemoveCommands_OperateOnGivenRow()
+    public async Task PauseStopCommands_OperateOnGivenRow()
     {
         var sessionManager = new FakeSessionManager();
         var session = await sessionManager.AddAsync(Source(), "/downloads", true);
@@ -99,11 +99,29 @@ public class TorrentListViewModelTests : IDisposable
 
         await row.PauseCommand.ExecuteAsync(null);
         await row.StopCommand.ExecuteAsync(null);
-        await row.RemoveCommand.ExecuteAsync(null);
 
         Assert.Contains(("Pause", session.Id), sessionManager.Calls);
         Assert.Contains(("Stop", session.Id), sessionManager.Calls);
-        Assert.Contains(("Remove", session.Id), sessionManager.Calls);
+    }
+
+    [Fact]
+    public async Task RemoveCommand_DoesNotRemoveDirectly_RaisesRemoveRequestedInstead()
+    {
+        // Removing a torrent may also delete files on disk, which needs user confirmation
+        // first - so the row must not call ISessionManager.RemoveAsync itself.
+        var sessionManager = new FakeSessionManager();
+        var session = await sessionManager.AddAsync(Source(), "/downloads", true);
+        var viewModel = new TorrentListViewModel(sessionManager);
+        viewModel.Refresh();
+        var row = viewModel.Torrents.Single();
+
+        Guid? requestedId = null;
+        viewModel.RemoveRequested += (_, id) => requestedId = id;
+
+        row.RemoveCommand.Execute(null);
+
+        Assert.Equal(session.Id, requestedId);
+        Assert.DoesNotContain(("Remove", session.Id), sessionManager.Calls);
     }
 
     [Fact]

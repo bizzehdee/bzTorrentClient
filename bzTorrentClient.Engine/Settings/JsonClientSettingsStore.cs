@@ -39,6 +39,7 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
                 DefaultTrackerListText = dto.DefaultTrackerListText ?? string.Empty,
                 SeedUntilMinutes = dto.SeedUntilMinutes > 0 ? dto.SeedUntilMinutes : new ClientSettings().SeedUntilMinutes,
                 SeedUntilRatio = dto.SeedUntilRatio > 0 ? dto.SeedUntilRatio : new ClientSettings().SeedUntilRatio,
+                RememberedDeleteFilesOnRemove = dto.RememberedDeleteFilesOnRemove,
             };
         }
         catch (JsonException)
@@ -63,6 +64,7 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
             DefaultTrackerListText = settings.DefaultTrackerListText,
             SeedUntilMinutes = settings.SeedUntilMinutes,
             SeedUntilRatio = settings.SeedUntilRatio,
+            RememberedDeleteFilesOnRemove = settings.RememberedDeleteFilesOnRemove,
         };
 
         var directory = Path.GetDirectoryName(_filePath);
@@ -84,5 +86,6 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
         public string DefaultTrackerListText { get; set; } = string.Empty;
         public int SeedUntilMinutes { get; set; }
         public double SeedUntilRatio { get; set; }
+        public bool? RememberedDeleteFilesOnRemove { get; set; }
     }
 }

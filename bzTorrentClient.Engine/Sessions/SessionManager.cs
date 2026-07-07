@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using bzTorrentClient.Engine.Persistence;
 using bzTorrentClient.Engine.Settings;
+using bzTorrentClient.Engine.Storage;
 
 namespace bzTorrentClient.Engine.Sessions;
 
@@ -59,13 +60,16 @@ public sealed class SessionManager : ISessionManager
         return session;
     }
 
-    public async Task RemoveAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    public async Task RemoveAsync(Guid sessionId, bool deleteFiles = false, CancellationToken cancellationToken = default)
     {
         if (!_sessions.TryRemove(sessionId, out var session))
             return;
 
         session.Stop();
         await _sessionStore.DeleteAsync(sessionId, cancellationToken);
+
+        if (deleteFiles)
+            FileSystemTorrentStorage.DeleteFiles(session.Metadata, session.DownloadDirectory);
     }
 
     public Task StartAsync(Guid sessionId, CancellationToken cancellationToken = default) =>

@@ -72,4 +72,38 @@ public class MainWindowViewModelTests
         sessionManager.ReleaseResume();
         await initializeTask;
     }
+
+    [Fact]
+    public async Task RemoveTorrentAsync_PassesDeleteFilesThrough_AndRefreshesList()
+    {
+        var sessionManager = new FakeSessionManager();
+        var session = await sessionManager.AddAsync(Source(), "/downloads", false);
+        var settings = new ClientSettings("/downloads");
+        var viewModel = new MainWindowViewModel(sessionManager, new TorrentAddPipeline(sessionManager), settings, new FakeClientSettingsStore());
+        viewModel.TorrentList.Refresh();
+        Assert.Single(viewModel.TorrentList.Torrents);
+
+        await viewModel.RemoveTorrentAsync(session.Id, deleteFiles: true);
+
+        Assert.Contains((session.Id, true), sessionManager.RemoveCalls);
+        Assert.Empty(viewModel.TorrentList.Torrents);
+    }
+
+    [Fact]
+    public async Task ConfirmRemoveRequested_RaisedWhenARowAsksToBeRemoved()
+    {
+        var sessionManager = new FakeSessionManager();
+        var session = await sessionManager.AddAsync(Source(), "/downloads", false);
+        var settings = new ClientSettings("/downloads");
+        var viewModel = new MainWindowViewModel(sessionManager, new TorrentAddPipeline(sessionManager), settings, new FakeClientSettingsStore());
+        viewModel.TorrentList.Refresh();
+        var row = viewModel.TorrentList.Torrents.Single();
+
+        Guid? requestedId = null;
+        viewModel.ConfirmRemoveRequested += (_, id) => requestedId = id;
+
+        row.RemoveCommand.Execute(null);
+
+        Assert.Equal(session.Id, requestedId);
+    }
 }

@@ -49,6 +49,39 @@ public sealed class FileSystemTorrentStorage : ITorrentStorage
         }
     }
 
+    /// <summary>
+    /// Deletes every file this torrent owns, following the same path layout
+    /// <see cref="EnsureAllocated"/> creates them with. Any subdirectory left empty
+    /// afterward (e.g. a multi-file torrent's own folder) is removed too, but only up to
+    /// - never including - <paramref name="downloadDirectory"/> itself, and only while
+    /// each directory is actually empty, so files unrelated to this torrent are left alone.
+    /// </summary>
+    public static void DeleteFiles(IMetadata metadata, string downloadDirectory)
+    {
+        ArgumentNullException.ThrowIfNull(metadata);
+        if (string.IsNullOrWhiteSpace(downloadDirectory))
+            throw new ArgumentException("Download directory must not be empty.", nameof(downloadDirectory));
+
+        var root = Path.GetFullPath(downloadDirectory);
+
+        foreach (var file in metadata.GetFileInfos())
+        {
+            var fullPath = Path.GetFullPath(file.Filename, root);
+            if (File.Exists(fullPath))
+                File.Delete(fullPath);
+
+            var directory = Path.GetDirectoryName(fullPath);
+            while (!string.IsNullOrEmpty(directory)
+                && !string.Equals(directory, root, StringComparison.Ordinal)
+                && Directory.Exists(directory)
+                && !Directory.EnumerateFileSystemEntries(directory).Any())
+            {
+                Directory.Delete(directory);
+                directory = Path.GetDirectoryName(directory);
+            }
+        }
+    }
+
     public void WriteBlock(int pieceIndex, int blockOffset, byte[] data)
     {
         var absoluteStart = (long)pieceIndex * _metadata.PieceSize + blockOffset;

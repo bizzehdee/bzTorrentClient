@@ -1,0 +1,29 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:bzTorrentClient.Avalonia.Features.RemoveTorrent"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="380" d:DesignHeight="180"
+        x:Class="bzTorrentClient.Avalonia.Features.RemoveTorrent.ConfirmRemoveWindow"
+        x:DataType="vm:ConfirmRemoveViewModel"
+        Width="380" SizeToContent="Height" CanResize="False"
+        Background="{DynamicResource AppBackgroundBrush}"
+        Title="Remove torrent">
+
+    <StackPanel Margin="{StaticResource SpaceLgThickness}" Spacing="{StaticResource SpaceMd}">
+
+        <TextBlock Classes="Title" Text="Remove torrent"/>
+        <TextBlock Classes="Body" TextWrapping="Wrap"
+                   Text="This removes the torrent from the list. You can also delete its downloaded files from disk."/>
+
+        <CheckBox Content="Also delete downloaded files" IsChecked="{Binding DeleteFiles}"/>
+        <CheckBox Content="Don't ask me again" IsChecked="{Binding DontAskAgain}"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Classes="Ghost" Content="Cancel" Command="{Binding CancelCommand}"/>
+            <Button Classes="Primary" Content="Remove" Command="{Binding RemoveCommand}" IsDefault="True"/>
+        </StackPanel>
+
+    </StackPanel>
+
+</Window>

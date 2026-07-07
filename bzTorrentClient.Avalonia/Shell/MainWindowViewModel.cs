@@ -34,6 +34,9 @@ public partial class MainWindowViewModel : ViewModelBase
     /// <summary>The view opens the Settings dialog in response to this.</summary>
     public event EventHandler? SettingsRequested;
 
+    /// <summary>The view confirms (delete files? remember the answer?) before <see cref="RemoveTorrentAsync"/> is called.</summary>
+    public event EventHandler<Guid>? ConfirmRemoveRequested;
+
     public MainWindowViewModel(
         ISessionManager sessionManager,
         TorrentAddPipeline addPipeline,
@@ -49,6 +52,7 @@ public partial class MainWindowViewModel : ViewModelBase
         Details = new TorrentDetailsViewModel(sessionManager);
         StatusFooter = new StatusFooterViewModel(sessionManager);
         TorrentList.SelectionChanged += (_, id) => Details.ShowSession(id);
+        TorrentList.RemoveRequested += (_, id) => ConfirmRemoveRequested?.Invoke(this, id);
 
         OpenAddTorrentCommand = new RelayCommand(() => AddTorrentRequested?.Invoke(this, EventArgs.Empty));
         OpenSettingsCommand = new RelayCommand(() => SettingsRequested?.Invoke(this, EventArgs.Empty));
@@ -60,6 +64,20 @@ public partial class MainWindowViewModel : ViewModelBase
             Details.Refresh();
             StatusFooter.Refresh();
         };
+    }
+
+    public async Task RemoveTorrentAsync(Guid sessionId, bool deleteFiles)
+    {
+        try
+        {
+            await _sessionManager.RemoveAsync(sessionId, deleteFiles);
+        }
+        catch (Exception ex)
+        {
+            TorrentList.LastErrorMessage = $"Failed to remove torrent: {ex.Message}";
+        }
+
+        TorrentList.Refresh();
     }
 
     public async Task InitializeAsync()

@@ -25,6 +25,9 @@ public partial class TorrentListViewModel : ViewModelBase
 
     public event EventHandler<Guid?>? SelectionChanged;
 
+    /// <summary>A row asked to be removed - bubbled up so the view can confirm (and decide whether to also delete files) before anything actually happens.</summary>
+    public event EventHandler<Guid>? RemoveRequested;
+
     public TorrentListViewModel(ISessionManager sessionManager)
     {
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
@@ -57,6 +60,7 @@ public partial class TorrentListViewModel : ViewModelBase
             if (row is null)
             {
                 row = new TorrentRowViewModel(session.Id, _sessionManager);
+                row.RemoveRequested += (_, _) => RemoveRequested?.Invoke(this, row.Id);
                 Torrents.Add(row);
             }
 

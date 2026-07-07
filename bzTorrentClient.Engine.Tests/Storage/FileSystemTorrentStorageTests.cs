@@ -104,4 +104,50 @@ public class FileSystemTorrentStorageTests : IDisposable
         var piece = storage.ReadPiece(0);
         Assert.Equal(block, piece);
     }
+
+    [Fact]
+    public void DeleteFiles_RemovesEachFile()
+    {
+        var metadata = MultiFileMetadata(pieceSize: 30);
+        var storage = new FileSystemTorrentStorage(metadata, _tempDir);
+        storage.EnsureAllocated();
+
+        FileSystemTorrentStorage.DeleteFiles(metadata, _tempDir);
+
+        Assert.False(File.Exists(Path.Combine(_tempDir, "a.bin")));
+        Assert.False(File.Exists(Path.Combine(_tempDir, "b.bin")));
+    }
+
+    [Fact]
+    public void DeleteFiles_LeavesNowEmptySubdirectoriesRemoved_ButNotTheDownloadDirectoryItself()
+    {
+        var metadata = new FakeMetadata(
+            pieceCount: 1,
+            pieceSize: 30,
+            files: new[] { new MetadataFileInfo { Id = 0, Filename = Path.Combine("SubFolder", "file.bin"), FileStartByte = 0, FileSize = 10 } });
+        var storage = new FileSystemTorrentStorage(metadata, _tempDir);
+        storage.EnsureAllocated();
+        var subDir = Path.Combine(_tempDir, "SubFolder");
+        Assert.True(Directory.Exists(subDir));
+
+        FileSystemTorrentStorage.DeleteFiles(metadata, _tempDir);
+
+        Assert.False(Directory.Exists(subDir));
+        Assert.True(Directory.Exists(_tempDir));
+    }
+
+    [Fact]
+    public void DeleteFiles_DoesNotRemoveUnrelatedFilesInSharedDirectory()
+    {
+        var metadata = SingleFileMetadata(fileSize: 10, pieceSize: 30);
+        var storage = new FileSystemTorrentStorage(metadata, _tempDir);
+        storage.EnsureAllocated();
+        var unrelatedFile = Path.Combine(_tempDir, "unrelated.txt");
+        File.WriteAllText(unrelatedFile, "keep me");
+
+        FileSystemTorrentStorage.DeleteFiles(metadata, _tempDir);
+
+        Assert.False(File.Exists(Path.Combine(_tempDir, "single.bin")));
+        Assert.True(File.Exists(unrelatedFile));
+    }
 }

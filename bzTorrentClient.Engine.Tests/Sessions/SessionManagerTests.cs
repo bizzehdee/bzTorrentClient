@@ -1,3 +1,4 @@
+using bzTorrent.Data;
 using bzTorrentClient.Engine.Persistence;
 using bzTorrentClient.Engine.Sessions;
 using bzTorrentClient.Engine.Settings;
@@ -6,8 +7,16 @@ using Xunit;
 
 namespace bzTorrentClient.Engine.Tests.Sessions;
 
-public class SessionManagerTests
+public class SessionManagerTests : IDisposable
 {
+    private readonly string _tempDir = Path.Combine(Path.GetTempPath(), $"bztorrentclient-sessionmanager-{Guid.NewGuid():N}");
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_tempDir))
+            Directory.Delete(_tempDir, recursive: true);
+    }
+
     private static TorrentAddSource.Magnet Source(string hashHex = "0123456789abcdef0123456789abcdef01234567") =>
         TorrentAddSource.Magnet.FromInfoHash(hashHex);
 
@@ -105,6 +114,42 @@ public class SessionManagerTests
         Assert.DoesNotContain(session, manager.Sessions);
         Assert.Equal(TorrentState.Stopped, session.State);
         Assert.Empty(await store.LoadAllAsync());
+    }
+
+    [Fact]
+    public async Task RemoveAsync_DeleteFilesFalse_LeavesDownloadedFileOnDisk()
+    {
+        Directory.CreateDirectory(_tempDir);
+        var sourceFile = Path.Combine(_tempDir, "content.bin");
+        await File.WriteAllBytesAsync(sourceFile, new byte[] { 1, 2, 3, 4 });
+        var metadata = Metadata.CreateFromPath(sourceFile);
+        using var torrentBytes = new MemoryStream();
+        metadata.Save(torrentBytes);
+
+        var (manager, _) = CreateManager();
+        var session = await manager.AddAsync(new TorrentAddSource.TorrentFile(torrentBytes.ToArray()), _tempDir, false);
+
+        await manager.RemoveAsync(session.Id, deleteFiles: false);
+
+        Assert.True(File.Exists(sourceFile));
+    }
+
+    [Fact]
+    public async Task RemoveAsync_DeleteFilesTrue_DeletesDownloadedFile()
+    {
+        Directory.CreateDirectory(_tempDir);
+        var sourceFile = Path.Combine(_tempDir, "content.bin");
+        await File.WriteAllBytesAsync(sourceFile, new byte[] { 1, 2, 3, 4 });
+        var metadata = Metadata.CreateFromPath(sourceFile);
+        using var torrentBytes = new MemoryStream();
+        metadata.Save(torrentBytes);
+
+        var (manager, _) = CreateManager();
+        var session = await manager.AddAsync(new TorrentAddSource.TorrentFile(torrentBytes.ToArray()), _tempDir, false);
+
+        await manager.RemoveAsync(session.Id, deleteFiles: true);
+
+        Assert.False(File.Exists(sourceFile));
     }
 
     [Fact]

@@ -24,7 +24,8 @@ public interface ISessionManager
         bool startImmediately,
         CancellationToken cancellationToken = default);
 
-    Task RemoveAsync(Guid sessionId, CancellationToken cancellationToken = default);
+    /// <summary>Removes a session. Pass <paramref name="deleteFiles"/> = true to also delete its downloaded files from disk.</summary>
+    Task RemoveAsync(Guid sessionId, bool deleteFiles = false, CancellationToken cancellationToken = default);
     Task StartAsync(Guid sessionId, CancellationToken cancellationToken = default);
     Task PauseAsync(Guid sessionId, CancellationToken cancellationToken = default);
     Task StopAsync(Guid sessionId, CancellationToken cancellationToken = default);

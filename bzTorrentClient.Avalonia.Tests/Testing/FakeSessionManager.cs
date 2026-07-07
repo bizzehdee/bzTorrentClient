@@ -10,6 +10,7 @@ internal class FakeSessionManager : ISessionManager, ITorrentRuntimeInfoProvider
     private readonly List<TorrentSession> _sessions = new();
 
     public List<(string Method, Guid Id)> Calls { get; } = new();
+    public List<(Guid Id, bool DeleteFiles)> RemoveCalls { get; } = new();
     public Dictionary<Guid, int> PeerCounts { get; } = new();
     public Dictionary<Guid, List<PeerConnectionInfo>> ConnectedPeers { get; } = new();
     public Dictionary<Guid, TorrentNetworkStats> NetworkStats { get; } = new();
@@ -35,9 +36,10 @@ internal class FakeSessionManager : ISessionManager, ITorrentRuntimeInfoProvider
         return Task.FromResult(session);
     }
 
-    public Task RemoveAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    public Task RemoveAsync(Guid sessionId, bool deleteFiles = false, CancellationToken cancellationToken = default)
     {
         Calls.Add(("Remove", sessionId));
+        RemoveCalls.Add((sessionId, deleteFiles));
         _sessions.RemoveAll(s => s.Id == sessionId);
         return Task.CompletedTask;
     }

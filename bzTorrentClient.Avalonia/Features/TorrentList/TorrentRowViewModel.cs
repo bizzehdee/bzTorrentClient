@@ -58,7 +58,14 @@ public partial class TorrentRowViewModel : ViewModelBase
     public IAsyncRelayCommand StartCommand { get; }
     public IAsyncRelayCommand PauseCommand { get; }
     public IAsyncRelayCommand StopCommand { get; }
-    public IAsyncRelayCommand RemoveCommand { get; }
+    public IRelayCommand RemoveCommand { get; }
+
+    /// <summary>
+    /// Removing a torrent may also delete its downloaded files, which isn't safely
+    /// reversible - the view responds to this by confirming with the user (and remembering
+    /// their answer, per settings) rather than the row deciding that on its own.
+    /// </summary>
+    public event EventHandler? RemoveRequested;
 
     public TorrentRowViewModel(Guid id, ISessionManager sessionManager)
     {
@@ -68,7 +75,7 @@ public partial class TorrentRowViewModel : ViewModelBase
         StartCommand = new AsyncRelayCommand(() => RunAsync(() => _sessionManager.StartAsync(Id)), CanStart);
         PauseCommand = new AsyncRelayCommand(() => RunAsync(() => _sessionManager.PauseAsync(Id)), CanPause);
         StopCommand = new AsyncRelayCommand(() => RunAsync(() => _sessionManager.StopAsync(Id)), CanStop);
-        RemoveCommand = new AsyncRelayCommand(() => RunAsync(() => _sessionManager.RemoveAsync(Id)));
+        RemoveCommand = new RelayCommand(() => RemoveRequested?.Invoke(this, EventArgs.Empty));
     }
 
     // Mirrors TorrentSession.Start/Pause/Stop's actual transition rules (see TorrentSession.cs):

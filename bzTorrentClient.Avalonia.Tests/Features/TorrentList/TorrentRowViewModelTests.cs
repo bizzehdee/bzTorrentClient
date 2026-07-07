@@ -46,4 +46,20 @@ public class TorrentRowViewModelTests
 
         Assert.Equal(3, raisedCommands.Count);
     }
+
+    [Fact]
+    public async Task RemoveCommand_RaisesRemoveRequested_DoesNotCallSessionManagerDirectly()
+    {
+        var sessionManager = new FakeSessionManager();
+        var session = await sessionManager.AddAsync(Source(), "/downloads", false);
+        var row = new TorrentRowViewModel(session.Id, sessionManager);
+
+        var raised = false;
+        row.RemoveRequested += (_, _) => raised = true;
+
+        row.RemoveCommand.Execute(null);
+
+        Assert.True(raised);
+        Assert.Empty(sessionManager.RemoveCalls);
+    }
 }
