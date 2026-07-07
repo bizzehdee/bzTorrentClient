@@ -16,6 +16,15 @@ namespace bzTorrentClient.Engine.Networking;
 public sealed class AggregatingPeerSource : IPeerSource
 {
     private const int MaxConsecutiveTrackerFailures = 3;
+
+    // Each tracker gets its own polling task, but the announce itself is a synchronous,
+    // blocking network call - letting every tracker announce at once (a torrent can carry
+    // dozens) both hammers the swarm on a single burst and, since each blocks a thread-pool
+    // thread, starves the pool so the announces trickle out anyway. Cap how many announce at
+    // the same time; the rest wait their turn without holding a thread.
+    private const int MaxConcurrentAnnounces = 3;
+    private readonly SemaphoreSlim _announceThrottle = new(MaxConcurrentAnnounces);
+
     private static readonly TimeSpan TrackerFailureRetryDelay = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan MinTrackerAnnounceInterval = TimeSpan.FromSeconds(30);
 
@@ -199,6 +208,18 @@ public sealed class AggregatingPeerSource : IPeerSource
 
         while (!cancellationToken.IsCancellationRequested)
         {
+            // Bound how many trackers announce concurrently (see MaxConcurrentAnnounces). The
+            // slot is held only for the blocking announce itself, not the long wait between
+            // announces, so all trackers still get their turn promptly.
+            try
+            {
+                await _announceThrottle.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
             AnnounceInfo? announceInfo = null;
             try
             {
@@ -216,6 +237,10 @@ public sealed class AggregatingPeerSource : IPeerSource
             catch
             {
                 announceInfo = null;
+            }
+            finally
+            {
+                _announceThrottle.Release();
             }
 
             if (announceInfo is not null)

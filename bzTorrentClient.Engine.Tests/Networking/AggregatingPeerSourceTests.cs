@@ -42,6 +42,59 @@ public class AggregatingPeerSourceTests
     }
 
     [Fact]
+    public async Task Start_AnnouncesToTrackers_AtMostThreeConcurrently()
+    {
+        // Many trackers, each announce held open briefly so overlaps are observable. The
+        // throttle must let more than one run at once (not the old trickle) but never more
+        // than three.
+        const int trackerCount = 9;
+        var concurrent = 0;
+        var maxConcurrent = 0;
+        var maxLock = new object();
+        var announcedTrackers = new ConcurrentDictionary<string, byte>();
+        var allAnnounced = new CountdownEvent(trackerCount);
+
+        AnnounceInfo Respond(AnnounceRequest request)
+        {
+            var now = Interlocked.Increment(ref concurrent);
+            lock (maxLock)
+            {
+                if (now > maxConcurrent)
+                    maxConcurrent = now;
+            }
+
+            Thread.Sleep(150); // hold the announce open so concurrent announces actually overlap
+            Interlocked.Decrement(ref concurrent);
+
+            if (announcedTrackers.TryAdd(request.Url, 0))
+                allAnnounced.Signal();
+
+            // Large wait time so no tracker re-announces during the test - we only measure the first round.
+            return new AnnounceInfo(Array.Empty<IPEndPoint>(), waitTime: 3600, seeders: 0, leechers: 0);
+        }
+
+        var metadata = new FakeMetadata(1);
+        for (var i = 0; i < trackerCount; i++)
+            metadata.AnnounceList.Add($"http://tracker{i}.example/announce");
+
+        var source = new AggregatingPeerSource(
+            metadata,
+            listenPort: 6881,
+            localPeerId: "-bz0001-000000000000",
+            trackerClientFactory: _ => new FakeTrackerClient(Respond),
+            dhtPeerFinderFactory: () => new FakePeerFinder(),
+            lanPeerFinderFactory: () => new FakePeerFinder());
+
+        source.Start();
+        var everyTrackerAnnounced = allAnnounced.Wait(TimeSpan.FromSeconds(10));
+        source.Stop();
+
+        Assert.True(everyTrackerAnnounced, "every tracker should get to announce");
+        Assert.True(maxConcurrent <= 3, $"announces must be capped at 3 at a time, saw {maxConcurrent}");
+        Assert.True(maxConcurrent >= 2, $"announces should run concurrently, not one at a time; saw {maxConcurrent}");
+    }
+
+    [Fact]
     public void Start_NonPrivateTorrent_StartsDhtSearchAndLanAnnounce()
     {
         var dht = new FakePeerFinder();
