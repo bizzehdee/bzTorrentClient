@@ -53,6 +53,9 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
                 LogDirectory = string.IsNullOrWhiteSpace(dto.LogDirectory) ? ClientSettings.GetPlatformDefaultLogDirectory() : dto.LogDirectory,
                 LogMaxFileSizeBytes = dto.LogMaxFileSizeBytes > 0 ? dto.LogMaxFileSizeBytes : new ClientSettings().LogMaxFileSizeBytes,
                 LogMaxAgeDays = dto.LogMaxAgeDays > 0 ? dto.LogMaxAgeDays : new ClientSettings().LogMaxAgeDays,
+                IpBlocklistUrl = dto.IpBlocklistUrl ?? string.Empty,
+                IpBlocklistFilePath = dto.IpBlocklistFilePath ?? string.Empty,
+                IpBlocklistText = dto.IpBlocklistText ?? string.Empty,
             };
         }
         catch (JsonException)
@@ -87,6 +90,9 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
             LogDirectory = settings.LogDirectory,
             LogMaxFileSizeBytes = settings.LogMaxFileSizeBytes,
             LogMaxAgeDays = settings.LogMaxAgeDays,
+            IpBlocklistUrl = settings.IpBlocklistUrl,
+            IpBlocklistFilePath = settings.IpBlocklistFilePath,
+            IpBlocklistText = settings.IpBlocklistText,
         };
 
         var directory = Path.GetDirectoryName(_filePath);
@@ -118,5 +124,8 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
         public string? LogDirectory { get; set; }
         public long LogMaxFileSizeBytes { get; set; }
         public int LogMaxAgeDays { get; set; }
+        public string? IpBlocklistUrl { get; set; }
+        public string? IpBlocklistFilePath { get; set; }
+        public string? IpBlocklistText { get; set; }
     }
 }

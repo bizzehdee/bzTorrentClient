@@ -25,6 +25,9 @@ public sealed class ClientSettings : IClientSettings
     public string LogDirectory { get; set; }
     public long LogMaxFileSizeBytes { get; set; } = 100_000;
     public int LogMaxAgeDays { get; set; } = 7;
+    public string IpBlocklistUrl { get; set; } = string.Empty;
+    public string IpBlocklistFilePath { get; set; } = string.Empty;
+    public string IpBlocklistText { get; set; } = string.Empty;
 
     public ClientSettings(string? defaultDownloadDirectory = null)
     {

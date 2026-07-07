@@ -6,6 +6,7 @@ using System.Text;
 using bzTorrent.Data;
 using bzTorrent.IO;
 using bzTorrentClient.Engine.Networking;
+using bzTorrentClient.Engine.Settings;
 using bzTorrentClient.Engine.Storage;
 using bzTorrentClient.Engine.Tests.Testing;
 using bzTorrentClient.Engine.Transfer;
@@ -80,6 +81,56 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
         Assert.True(completed, "Expected the single piece to be downloaded and verified within the timeout.");
         var downloaded = File.ReadAllBytes(Path.Combine(_leecherDir, "payload.bin"));
         Assert.Equal(pieceData, downloaded);
+    }
+
+    [Fact]
+    public async Task PeerConnectionManager_BlocklistedIp_NeverConnects()
+    {
+        var pieceData = Enumerable.Range(0, 32).Select(i => (byte)i).ToArray();
+        var pieceHash = SHA1.HashData(pieceData);
+
+        var metadata = new FakeMetadata(
+            pieceCount: 1,
+            hashHex: InfoHashHex,
+            pieceSize: pieceData.Length,
+            pieceHashes: new[] { pieceHash },
+            files: new[] { new MetadataFileInfo { Id = 0, Filename = "payload.bin", FileStartByte = 0, FileSize = pieceData.Length } });
+
+        var tcpListener = new TcpListener(IPAddress.Loopback, 0);
+        tcpListener.Start();
+        var port = ((IPEndPoint)tcpListener.LocalEndpoint).Port;
+        _ = Task.Run(() => RunRawSeederAsync(tcpListener, pieceData));
+
+        var storage = new FileSystemTorrentStorage(metadata, _leecherDir);
+        storage.EnsureAllocated();
+        var pieceManager = new RarestFirstPieceManager(metadata, storage);
+
+        var cacheFilePath = Path.Combine(Path.GetTempPath(), $"bztorrentclient-blocklistcache-{Guid.NewGuid():N}.txt");
+        var settings = new ClientSettings("/downloads") { IpBlocklistText = "127.0.0.1" };
+        var blocklist = new IpBlocklistProvider(settings, cacheFilePath);
+
+        using var connectionManager = new PeerConnectionManager(
+            metadata,
+            storage,
+            pieceManager,
+            LeecherPeerId,
+            maxConnectionsPerTorrent: 5,
+            tryReserveConnections: _ => true,
+            releaseConnections: _ => { },
+            ipBlocklist: blocklist);
+
+        connectionManager.Start();
+        connectionManager.AddPeerCandidate(new IPEndPoint(IPAddress.Loopback, port));
+
+        // Give a real (non-blocklisted) connection attempt ample time to have connected by now.
+        await Task.Delay(500);
+
+        connectionManager.Stop();
+        tcpListener.Stop();
+        File.Delete(cacheFilePath);
+
+        Assert.Equal(0, connectionManager.ActiveConnectionCount);
+        Assert.Empty(connectionManager.ConnectedPeers);
     }
 
     [Fact]

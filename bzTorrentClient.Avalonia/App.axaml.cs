@@ -64,12 +64,16 @@ public partial class App : Application
             var defaultTrackerListProvider = new DefaultTrackerListProvider(
                 settings,
                 Path.Combine(appDataDirectory, "default-trackers-cache.txt"));
+            var ipBlocklistProvider = new IpBlocklistProvider(
+                settings,
+                Path.Combine(appDataDirectory, "ip-blocklist-cache.txt"));
             var sessionManager = new NetworkedSessionManager(
                 plainSessionManager,
                 settings,
                 GenerateLocalPeerId(),
                 defaultTrackerListProvider: defaultTrackerListProvider,
-                logger: logger);
+                logger: logger,
+                ipBlocklistProvider: ipBlocklistProvider);
             var addPipeline = new TorrentAddPipeline(sessionManager);
 
             var mainWindowViewModel = new MainWindowViewModel(sessionManager, addPipeline, settings, settingsStore);

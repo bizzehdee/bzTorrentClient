@@ -72,6 +72,15 @@ public partial class SettingsViewModel : ViewModelBase
     private int _logMaxAgeDays;
 
     [ObservableProperty]
+    private string _ipBlocklistUrl;
+
+    [ObservableProperty]
+    private string _ipBlocklistFilePath;
+
+    [ObservableProperty]
+    private string _ipBlocklistText;
+
+    [ObservableProperty]
     private string? _errorMessage;
 
     public IReadOnlyList<ColorTheme> ColorThemes { get; } = Enum.GetValues<ColorTheme>();
@@ -107,6 +116,9 @@ public partial class SettingsViewModel : ViewModelBase
         _logDirectory = settings.LogDirectory;
         _logMaxFileSizeKB = (int)(settings.LogMaxFileSizeBytes / 1024);
         _logMaxAgeDays = settings.LogMaxAgeDays;
+        _ipBlocklistUrl = settings.IpBlocklistUrl;
+        _ipBlocklistFilePath = settings.IpBlocklistFilePath;
+        _ipBlocklistText = settings.IpBlocklistText;
 
         SaveCommand = new RelayCommand(Save);
     }
@@ -173,6 +185,12 @@ public partial class SettingsViewModel : ViewModelBase
             return;
         }
 
+        if (!string.IsNullOrWhiteSpace(IpBlocklistUrl) && !Uri.TryCreate(IpBlocklistUrl, UriKind.Absolute, out _))
+        {
+            ErrorMessage = "IP blocklist URL must be a valid absolute URL.";
+            return;
+        }
+
         try
         {
             _settings.DefaultDownloadDirectory = DefaultDownloadDirectory;
@@ -194,6 +212,9 @@ public partial class SettingsViewModel : ViewModelBase
             _settings.LogDirectory = LogDirectory.Trim();
             _settings.LogMaxFileSizeBytes = (long)LogMaxFileSizeKB * 1024;
             _settings.LogMaxAgeDays = LogMaxAgeDays;
+            _settings.IpBlocklistUrl = IpBlocklistUrl.Trim();
+            _settings.IpBlocklistFilePath = IpBlocklistFilePath.Trim();
+            _settings.IpBlocklistText = IpBlocklistText;
             _settingsStore.Save(_settings);
         }
         catch (Exception ex)

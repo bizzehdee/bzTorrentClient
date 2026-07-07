@@ -53,6 +53,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     private readonly HashSet<Guid> _verifiedSessionIds = new();
 
     private readonly IDefaultTrackerListProvider _defaultTrackerListProvider;
+    private readonly IIpBlocklistProvider _ipBlocklistProvider;
 
     private static readonly TimeSpan DefaultSeedingPolicyCheckInterval = TimeSpan.FromSeconds(5);
     private readonly Timer _seedingPolicyTimer;
@@ -67,7 +68,8 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         TimeSpan? metadataRetryDelay = null,
         IDefaultTrackerListProvider? defaultTrackerListProvider = null,
         TimeSpan? seedingPolicyCheckInterval = null,
-        IDebugLogger? logger = null)
+        IDebugLogger? logger = null,
+        IIpBlocklistProvider? ipBlocklistProvider = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -78,6 +80,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         _metadataFetchTimeout = metadataFetchTimeout ?? DefaultMetadataFetchTimeout;
         _metadataRetryDelay = metadataRetryDelay ?? DefaultMetadataRetryDelay;
         _defaultTrackerListProvider = defaultTrackerListProvider ?? NullDefaultTrackerListProvider.Instance;
+        _ipBlocklistProvider = ipBlocklistProvider ?? NullIpBlocklistProvider.Instance;
         _downloadLimiter = new TokenBucketRateLimiter(() => _settings.GlobalDownloadLimitBytesPerSecond);
         _uploadLimiter = new TokenBucketRateLimiter(() => _settings.GlobalUploadLimitBytesPerSecond);
 
@@ -119,6 +122,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         // upserted list is as current as this launch can make it, but a slow/failed fetch
         // must not stop the rest of startup (RefreshAsync swallows its own failures).
         await _defaultTrackerListProvider.RefreshAsync(cancellationToken);
+        await _ipBlocklistProvider.RefreshAsync(cancellationToken);
 
         var sessions = _inner.Sessions.ToList();
 
@@ -654,7 +658,8 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
             _downloadLimiter,
             _uploadLimiter,
             enablePex: _settings.EnablePex,
-            encryptionMode: _settings.EncryptionMode);
+            encryptionMode: _settings.EncryptionMode,
+            ipBlocklist: _ipBlocklistProvider);
 
     private sealed class TorrentRuntime : IDisposable
     {

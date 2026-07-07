@@ -72,4 +72,18 @@ public interface IClientSettings
 
     /// <summary>Log files older than this many days are deleted. Default 7.</summary>
     int LogMaxAgeDays { get; set; }
+
+    /// <summary>
+    /// URL to a plain-text IP blocklist (single IPs, CIDR ranges, and/or
+    /// eMule/PeerGuardian-style "description:start_ip-end_ip" ranges, one per line),
+    /// re-fetched on every launch. Combined with <see cref="IpBlocklistFilePath"/> and
+    /// <see cref="IpBlocklistText"/>. Empty disables it.
+    /// </summary>
+    string IpBlocklistUrl { get; set; }
+
+    /// <summary>Local file path to an IP blocklist, same format as <see cref="IpBlocklistUrl"/>, re-read on every launch. Empty disables it.</summary>
+    string IpBlocklistFilePath { get; set; }
+
+    /// <summary>User-supplied IP blocklist entries (one per line), same format and combined the same way as <see cref="IpBlocklistUrl"/>. Empty disables it.</summary>
+    string IpBlocklistText { get; set; }
 }

@@ -189,6 +189,37 @@
                 </StackPanel>
             </TabItem>
 
+            <TabItem Header="IP Filter">
+                <StackPanel Spacing="{StaticResource SpaceMd}" Margin="{StaticResource SpaceMdThickness}">
+                    <Border Classes="Card">
+                        <StackPanel Spacing="{StaticResource SpaceMd}">
+
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="BLOCKLIST URL (AUTO-UPDATES ON LAUNCH)"/>
+                                <TextBox Text="{Binding IpBlocklistUrl}" PlaceholderText="https://example.com/blocklist.txt"/>
+                            </StackPanel>
+
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="BLOCKLIST FILE"/>
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <TextBox Grid.Column="0" Text="{Binding IpBlocklistFilePath}"/>
+                                    <Button Grid.Column="1" Classes="Secondary" Content="Browse…" Click="OnBrowseIpBlocklistFileClick"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="ADDITIONAL BLOCKED RANGES (ONE PER LINE)"/>
+                                <TextBox Text="{Binding IpBlocklistText}" AcceptsReturn="True" TextWrapping="Wrap" Height="80"/>
+                            </StackPanel>
+
+                            <TextBlock Classes="Body" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                       Text="All three are combined. Accepts single IPs (1.2.3.4), CIDR ranges (1.2.3.0/24), and eMule/PeerGuardian-style ranges (description:1.2.3.4-1.2.3.10). A blocked peer can never be connected to, downloaded from, or uploaded to."/>
+
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </TabItem>
+
         </TabControl>
 
         <TextBlock Classes="Body" Text="{Binding ErrorMessage}" Foreground="{DynamicResource StateErrorBrush}" TextWrapping="Wrap"

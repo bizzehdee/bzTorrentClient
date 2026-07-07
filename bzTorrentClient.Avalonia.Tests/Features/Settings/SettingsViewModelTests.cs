@@ -270,4 +270,55 @@ public class SettingsViewModelTests
         Assert.NotNull(viewModel.ErrorMessage);
         Assert.Null(store.Saved);
     }
+
+    [Fact]
+    public void Constructor_DefaultsIpBlocklistSettingsFromSettings()
+    {
+        var settings = new ClientSettings("/downloads")
+        {
+            IpBlocklistUrl = "https://example.com/blocklist.txt",
+            IpBlocklistFilePath = "/custom/blocklist.txt",
+            IpBlocklistText = "1.2.3.4",
+        };
+        var viewModel = new SettingsViewModel(settings, new FakeClientSettingsStore());
+
+        Assert.Equal("https://example.com/blocklist.txt", viewModel.IpBlocklistUrl);
+        Assert.Equal("/custom/blocklist.txt", viewModel.IpBlocklistFilePath);
+        Assert.Equal("1.2.3.4", viewModel.IpBlocklistText);
+    }
+
+    [Fact]
+    public void Save_IpBlocklistSettings_PersistsToSettings()
+    {
+        var settings = new ClientSettings("/downloads");
+        var viewModel = new SettingsViewModel(settings, new FakeClientSettingsStore())
+        {
+            IpBlocklistUrl = "https://example.com/blocklist.txt",
+            IpBlocklistFilePath = "/custom/blocklist.txt",
+            IpBlocklistText = "1.2.3.4",
+        };
+
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.Equal("https://example.com/blocklist.txt", settings.IpBlocklistUrl);
+        Assert.Equal("/custom/blocklist.txt", settings.IpBlocklistFilePath);
+        Assert.Equal("1.2.3.4", settings.IpBlocklistText);
+    }
+
+    [Fact]
+    public void Save_InvalidIpBlocklistUrl_SetsErrorAndDoesNotPersist()
+    {
+        var settings = new ClientSettings("/downloads");
+        var store = new FakeClientSettingsStore();
+        var viewModel = new SettingsViewModel(settings, store)
+        {
+            IpBlocklistUrl = "not-a-url",
+        };
+
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.NotNull(viewModel.ErrorMessage);
+        Assert.Null(store.Saved);
+    }
 }

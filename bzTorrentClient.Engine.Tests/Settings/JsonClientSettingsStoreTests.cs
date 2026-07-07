@@ -49,6 +49,9 @@ public class JsonClientSettingsStoreTests : IDisposable
             LogDirectory = "/custom/logs",
             LogMaxFileSizeBytes = 250_000,
             LogMaxAgeDays = 14,
+            IpBlocklistUrl = "https://example.com/blocklist.txt",
+            IpBlocklistFilePath = "/custom/blocklist.txt",
+            IpBlocklistText = "1.2.3.4",
         };
 
         store.Save(settings);
@@ -73,6 +76,9 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.Equal("/custom/logs", reloaded.LogDirectory);
         Assert.Equal(250_000, reloaded.LogMaxFileSizeBytes);
         Assert.Equal(14, reloaded.LogMaxAgeDays);
+        Assert.Equal("https://example.com/blocklist.txt", reloaded.IpBlocklistUrl);
+        Assert.Equal("/custom/blocklist.txt", reloaded.IpBlocklistFilePath);
+        Assert.Equal("1.2.3.4", reloaded.IpBlocklistText);
     }
 
     [Fact]
@@ -102,6 +108,17 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.Equal(ClientSettings.GetPlatformDefaultLogDirectory(), settings.LogDirectory);
         Assert.Equal(100_000, settings.LogMaxFileSizeBytes);
         Assert.Equal(7, settings.LogMaxAgeDays);
+    }
+
+    [Fact]
+    public void Load_MissingFile_DefaultsIpBlocklistSettingsToEmpty()
+    {
+        var store = new JsonClientSettingsStore(_filePath);
+        var settings = store.Load();
+
+        Assert.Equal(string.Empty, settings.IpBlocklistUrl);
+        Assert.Equal(string.Empty, settings.IpBlocklistFilePath);
+        Assert.Equal(string.Empty, settings.IpBlocklistText);
     }
 
     [Fact]

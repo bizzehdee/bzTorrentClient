@@ -42,5 +42,17 @@ public partial class SettingsWindow : Window
             viewModel.LogDirectory = folders[0].Path.LocalPath;
     }
 
+    private async void OnBrowseIpBlocklistFileClick(object? sender, RoutedEventArgs e)
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Select an IP blocklist file",
+            AllowMultiple = false,
+        });
+
+        if (files.Count > 0 && DataContext is SettingsViewModel viewModel)
+            viewModel.IpBlocklistFilePath = files[0].Path.LocalPath;
+    }
+
     private void OnCancelClick(object? sender, RoutedEventArgs e) => Close();
 }

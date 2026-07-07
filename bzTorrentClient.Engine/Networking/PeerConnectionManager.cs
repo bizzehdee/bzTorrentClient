@@ -38,6 +38,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
     private readonly IRateLimiter _uploadLimiter;
     private readonly bool _enablePex;
     private readonly PeerEncryptionMode _encryptionMode;
+    private readonly IIpBlocklistProvider _ipBlocklist;
 
     private readonly ConcurrentQueue<IPEndPoint> _candidates = new();
     private readonly HashSet<string> _knownPeers = new();
@@ -63,7 +64,8 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         IRateLimiter? downloadLimiter = null,
         IRateLimiter? uploadLimiter = null,
         bool enablePex = true,
-        PeerEncryptionMode encryptionMode = PeerEncryptionMode.PreferEncryption)
+        PeerEncryptionMode encryptionMode = PeerEncryptionMode.PreferEncryption,
+        IIpBlocklistProvider? ipBlocklist = null)
     {
         _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
@@ -76,6 +78,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         _uploadLimiter = uploadLimiter ?? new TokenBucketRateLimiter(() => 0);
         _enablePex = enablePex;
         _encryptionMode = encryptionMode;
+        _ipBlocklist = ipBlocklist ?? NullIpBlocklistProvider.Instance;
     }
 
     public int ActiveConnectionCount => _activeClients.Count;
@@ -100,6 +103,13 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
 
     public void AddPeerCandidate(IPEndPoint endpoint)
     {
+        // Blocked outright: never queued, so a blocklisted peer is never connected to,
+        // downloaded from, or uploaded to - this is the only place a candidate becomes an
+        // actual connection, and MVP is outbound-only, so there's no separate inbound path
+        // to gate as well.
+        if (_ipBlocklist.IsBlocked(endpoint.Address))
+            return;
+
         var key = $"{endpoint.Address}:{endpoint.Port}";
         lock (_knownPeersLock)
         {
