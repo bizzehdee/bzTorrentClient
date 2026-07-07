@@ -65,10 +65,26 @@ public partial class TorrentRowViewModel : ViewModelBase
         Id = id;
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
 
-        StartCommand = new AsyncRelayCommand(() => RunAsync(() => _sessionManager.StartAsync(Id)));
-        PauseCommand = new AsyncRelayCommand(() => RunAsync(() => _sessionManager.PauseAsync(Id)));
-        StopCommand = new AsyncRelayCommand(() => RunAsync(() => _sessionManager.StopAsync(Id)));
+        StartCommand = new AsyncRelayCommand(() => RunAsync(() => _sessionManager.StartAsync(Id)), CanStart);
+        PauseCommand = new AsyncRelayCommand(() => RunAsync(() => _sessionManager.PauseAsync(Id)), CanPause);
+        StopCommand = new AsyncRelayCommand(() => RunAsync(() => _sessionManager.StopAsync(Id)), CanStop);
         RemoveCommand = new AsyncRelayCommand(() => RunAsync(() => _sessionManager.RemoveAsync(Id)));
+    }
+
+    // Mirrors TorrentSession.Start/Pause/Stop's actual transition rules (see TorrentSession.cs):
+    // Start is a no-op when already Active/Seeding and throws during Checking; Pause only
+    // makes sense from Active/Seeding; Stop is legal from anywhere but pointless when
+    // already Stopped. Hiding those cases instead of letting them no-op or throw keeps the
+    // button state honest about what will actually happen.
+    private bool CanStart() => State is TorrentState.Paused or TorrentState.Stopped or TorrentState.Error or TorrentState.Completed;
+    private bool CanPause() => State is TorrentState.Active or TorrentState.Seeding;
+    private bool CanStop() => State is not TorrentState.Stopped;
+
+    partial void OnStateChanged(TorrentState value)
+    {
+        StartCommand.NotifyCanExecuteChanged();
+        PauseCommand.NotifyCanExecuteChanged();
+        StopCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>
