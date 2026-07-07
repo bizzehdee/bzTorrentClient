@@ -583,6 +583,39 @@ public class NetworkedSessionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task InitializeAsync_StoppedSessionWithCompleteDataOnDisk_StaysStopped()
+    {
+        // Regression test: a torrent the user explicitly Stopped must come back Stopped
+        // across an app restart, not resurrected as Completed. Startup re-verification runs
+        // every session through the Stopped -> Checking -> Completed/Paused pipeline to
+        // refresh progress; that must refresh the piece completion without forgetting that
+        // the user had stopped it.
+        Directory.CreateDirectory(_tempDir);
+        var sourceFile = Path.Combine(_tempDir, "source.bin");
+        await File.WriteAllBytesAsync(sourceFile, Enumerable.Range(0, 100).Select(b => (byte)b).ToArray());
+        var builtMetadata = Metadata.CreateFromPath(sourceFile);
+        using var torrentBytes = new MemoryStream();
+        builtMetadata.Save(torrentBytes);
+
+        var store = new InMemorySessionStore();
+        var (firstRunManager, _, _, _) = CreateManager(store);
+        var added = await firstRunManager.AddAsync(new TorrentAddSource.TorrentFile(torrentBytes.ToArray()), _tempDir, startImmediately: false);
+        await firstRunManager.StopAsync(added.Id);
+        Assert.Equal(TorrentState.Stopped, added.State);
+
+        var (secondRunManager, _, secondRunConnectionManagers, _) = CreateManager(store);
+        await secondRunManager.InitializeAsync();
+
+        var resumed = secondRunManager.Sessions.Single(s => s.Id == added.Id);
+        // Progress is still refreshed from disk...
+        Assert.True(resumed.PieceCompletion[0]);
+        Assert.Equal(1.0, resumed.ProgressFraction);
+        // ...but the state the user left it in is remembered, and it stays halted.
+        Assert.Equal(TorrentState.Stopped, resumed.State);
+        Assert.False(secondRunConnectionManagers.ContainsKey(added.Id));
+    }
+
+    [Fact]
     public async Task StartAsync_StoppedSessionHasDataOnDisk_RecognizesItWithoutRedownloading()
     {
         // Same guarantee, but for a torrent started fresh mid-session (not via app-restart

@@ -499,11 +499,17 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     /// </summary>
     private static async Task VerifyAgainstDiskAsync(TorrentSession session, CancellationToken cancellationToken)
     {
+        // Remember the exact state the user left this torrent in before verification churns
+        // it: the check pipeline forces Stopped -> Checking -> Paused/Completed, so without
+        // restoring afterwards a torrent the user had explicitly Stopped (with all its data
+        // on disk) would silently come back as Completed - forgetting that they stopped it.
+        var originalState = session.State;
+
         // Completed/Seeding count as "running" here same as Active - a finished torrent
         // keeps seeding until the user explicitly stops it, so if disk state has since
         // regressed (e.g. files removed externally) it must resume downloading the
         // missing pieces rather than just sit there having lost its running status.
-        var wasRunning = session.State is TorrentState.Active or TorrentState.Completed or TorrentState.Seeding;
+        var wasRunning = originalState is TorrentState.Active or TorrentState.Completed or TorrentState.Seeding;
 
         session.Stop(); // Normalizes any prior state to Stopped, from which BeginChecking is always legal.
         session.BeginChecking();
@@ -521,6 +527,12 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         // for a session that's already running mid-flight.
         if (wasRunning && session.State is TorrentState.Paused or TorrentState.Completed)
             session.Start();
+        // A torrent the user explicitly Stopped stays Stopped across restarts - verification
+        // refreshed its piece completion (so progress shows accurately), but it must not be
+        // resurrected as Completed/Paused. (A Paused torrent that turns out complete is left
+        // as Completed by design - it genuinely is finished and was never hard-stopped.)
+        else if (originalState == TorrentState.Stopped)
+            session.Stop();
     }
 
     private TorrentRuntime GetOrCreateRuntime(TorrentSession session)
