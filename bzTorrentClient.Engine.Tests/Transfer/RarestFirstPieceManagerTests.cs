@@ -58,19 +58,50 @@ public class RarestFirstPieceManagerTests : IDisposable
     }
 
     [Fact]
-    public void TryGetNextRequest_PrefersRarerPiece()
+    public void TryGetNextRequest_DuringRampUp_PrefersMostAvailablePiece()
     {
+        // Fewer than RampUpPieceGoal pieces are complete (zero, here), so picking favors
+        // whatever's most available - fast, easy data from many peers to get things moving.
         var (metadata, storage, _) = CreateFixture(2);
         var manager = new RarestFirstPieceManager(metadata, storage);
 
-        // Piece 0 is available from two peers, piece 1 from only one -> piece 1 is rarer.
+        // Piece 0 is available from two peers, piece 1 from only one -> piece 0 is more available.
         manager.RegisterPeerBitfield(1, new[] { true, false });
         manager.RegisterPeerBitfield(2, new[] { true, true });
 
         var request = manager.TryGetNextRequest(2, new[] { true, true });
 
         Assert.NotNull(request);
-        Assert.Equal(1, request!.PieceIndex);
+        Assert.Equal(0, request!.PieceIndex);
+    }
+
+    [Fact]
+    public void TryGetNextRequest_AfterRampUp_PrefersRarerPiece()
+    {
+        // Once RampUpPieceGoal pieces are complete, picking switches to rarest-first for
+        // swarm health - a scarce piece isn't left to disappear if its few holders leave.
+        const int rampUpGoal = 4;
+        var (metadata, storage, contents) = CreateFixture(rampUpGoal + 2);
+        var manager = new RarestFirstPieceManager(metadata, storage);
+
+        for (var i = 0; i < rampUpGoal; i++)
+            manager.OnBlockReceived(i, 0, contents[i]);
+
+        var lastTwo = new bool[rampUpGoal + 2];
+        lastTwo[rampUpGoal] = true;
+        lastTwo[rampUpGoal + 1] = true;
+
+        // Both remaining pieces are available from peer 1, but only the last one is also
+        // available from peer 2 - so the second-to-last piece (index rampUpGoal) is rarer.
+        manager.RegisterPeerBitfield(1, lastTwo);
+        var onlyLastPiece = new bool[rampUpGoal + 2];
+        onlyLastPiece[rampUpGoal + 1] = true;
+        manager.RegisterPeerBitfield(2, onlyLastPiece);
+
+        var request = manager.TryGetNextRequest(1, lastTwo);
+
+        Assert.NotNull(request);
+        Assert.Equal(rampUpGoal, request!.PieceIndex);
     }
 
     [Fact]
@@ -136,6 +167,37 @@ public class RarestFirstPieceManagerTests : IDisposable
         var request = manager.TryGetNextRequest(1, new[] { true });
         Assert.NotNull(request);
         Assert.Equal(0, request!.BlockOffset);
+    }
+
+    [Fact]
+    public void TryGetNextRequest_InProgressPiece_CanBeSuppliedByMultiplePeers()
+    {
+        // A piece isn't reserved for whichever peer started it - once one peer's block
+        // request leaves it in-progress, a different peer that also has it should be able
+        // to supply its other blocks too.
+        var pieceSize = RarestFirstPieceManager.BlockSize * 2;
+        var content = new byte[pieceSize];
+        var hash = SHA1.HashData(content);
+        var metadata = new FakeMetadata(
+            1,
+            pieceSize: pieceSize,
+            pieceHashes: new[] { hash },
+            files: new[] { new MetadataFileInfo { Id = 0, Filename = "file.bin", FileStartByte = 0, FileSize = pieceSize } });
+        var storage = new FileSystemTorrentStorage(metadata, _tempDir);
+        storage.EnsureAllocated();
+
+        var manager = new RarestFirstPieceManager(metadata, storage);
+        manager.RegisterPeerBitfield(1, new[] { true });
+        manager.RegisterPeerBitfield(2, new[] { true });
+
+        var fromPeer1 = manager.TryGetNextRequest(1, new[] { true });
+        var fromPeer2 = manager.TryGetNextRequest(2, new[] { true });
+
+        Assert.NotNull(fromPeer1);
+        Assert.NotNull(fromPeer2);
+        Assert.Equal(0, fromPeer1!.PieceIndex);
+        Assert.Equal(0, fromPeer2!.PieceIndex);
+        Assert.NotEqual(fromPeer1.BlockOffset, fromPeer2.BlockOffset);
     }
 
     [Fact]

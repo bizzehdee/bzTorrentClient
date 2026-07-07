@@ -4,9 +4,25 @@ using bzTorrentClient.Engine.Storage;
 
 namespace bzTorrentClient.Engine.Transfer;
 
+/// <summary>
+/// Picks new pieces most-available-first during ramp-up, then rarest-first for the
+/// remainder (see <see cref="RampUpPieceGoal"/>), falling back to sequential (lowest
+/// index) whenever availability data ties or can't otherwise differentiate candidates. A
+/// piece already in progress can be finished by any peer that has it, not just whichever
+/// peer started it.
+/// </summary>
 public sealed class RarestFirstPieceManager : IPieceManager
 {
     public const int BlockSize = 16 * 1024;
+
+    /// <summary>
+    /// While fewer than this many pieces are complete, new pieces are picked by highest
+    /// availability rather than rarest - a handful of common, easy-to-get pieces from many
+    /// peers gets data (and therefore other peers' interest in us) flowing fast. Once past
+    /// this ramp-up, picking stays on rarest-first for swarm health (scarce pieces don't
+    /// disappear if their few holders leave).
+    /// </summary>
+    private const int RampUpPieceGoal = 4;
 
     private readonly ITorrentStorage _storage;
     private readonly List<byte[]> _pieceHashes;
@@ -81,6 +97,9 @@ public sealed class RarestFirstPieceManager : IPieceManager
     {
         lock (_lock)
         {
+            // A piece already in progress isn't reserved for whichever peer started it -
+            // any peer that has it can supply any of its still-unrequested blocks, so a
+            // single piece can be assembled from many peers concurrently.
             foreach (var (pieceIndex, progress) in _inProgress)
             {
                 if (_completed[pieceIndex])
@@ -93,24 +112,7 @@ public sealed class RarestFirstPieceManager : IPieceManager
                     return next;
             }
 
-            var candidate = -1;
-            var bestAvailability = int.MaxValue;
-            for (var i = 0; i < _pieceHashes.Count; i++)
-            {
-                if (_completed[i] || _inProgress.ContainsKey(i))
-                    continue;
-                if (i >= peerBitfield.Length || !peerBitfield[i])
-                    continue;
-                if (_availability[i] == 0)
-                    continue;
-
-                if (_availability[i] < bestAvailability)
-                {
-                    bestAvailability = _availability[i];
-                    candidate = i;
-                }
-            }
-
+            var candidate = SelectNewPieceCandidate(peerBitfield);
             if (candidate < 0)
                 return null;
 
@@ -118,6 +120,52 @@ public sealed class RarestFirstPieceManager : IPieceManager
             _inProgress[candidate] = progressState;
             return NextUnrequestedBlock(candidate, progressState);
         }
+    }
+
+    /// <summary>
+    /// Picks most-available during ramp-up or rarest-first afterward (see
+    /// <see cref="RampUpPieceGoal"/>). Ties within either ranking - most commonly "nothing
+    /// has recorded availability data yet differentiating them" - resolve to the
+    /// lowest-index candidate, i.e. sequential order, since the scan below runs low-to-high
+    /// and only replaces the current candidate on a strictly better availability count.
+    /// Must be called under <see cref="_lock"/>.
+    /// </summary>
+    private int SelectNewPieceCandidate(bool[] peerBitfield)
+    {
+        var completedCount = 0;
+        foreach (var done in _completed)
+        {
+            if (done)
+                completedCount++;
+        }
+
+        var rampingUp = completedCount < Math.Min(RampUpPieceGoal, _pieceHashes.Count);
+        return SelectByAvailability(peerBitfield, mostAvailableFirst: rampingUp);
+    }
+
+    /// <summary>Must be called under <see cref="_lock"/>.</summary>
+    private int SelectByAvailability(bool[] peerBitfield, bool mostAvailableFirst)
+    {
+        var candidate = -1;
+        var best = mostAvailableFirst ? 0 : int.MaxValue;
+
+        for (var i = 0; i < _pieceHashes.Count; i++)
+        {
+            if (_completed[i] || _inProgress.ContainsKey(i))
+                continue;
+            if (i >= peerBitfield.Length || !peerBitfield[i])
+                continue;
+            if (_availability[i] == 0)
+                continue;
+
+            if (mostAvailableFirst ? _availability[i] > best : _availability[i] < best)
+            {
+                best = _availability[i];
+                candidate = i;
+            }
+        }
+
+        return candidate;
     }
 
     public int? OnBlockReceived(int pieceIndex, int blockOffset, byte[] data)

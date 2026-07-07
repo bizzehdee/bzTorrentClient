@@ -10,13 +10,18 @@ namespace bzTorrentClient.Engine.Networking;
 
 /// <summary>
 /// Best-effort BEP-9 metadata fetch for a magnet/info-hash-only add: pulls candidate
-/// peers from an already-running <see cref="IPeerSource"/> and tries them (a few in
-/// parallel) until one hands over the full info dictionary, or <paramref name="timeout"/>
-/// elapses.
+/// peers from an already-running <see cref="IPeerSource"/> and tries many of them at once
+/// ("scattergun" - metadata is small and cheap to ask for, and any single candidate might
+/// not have it, be slow, or not support the extension at all) until one hands over the
+/// full info dictionary, or <paramref name="timeout"/> elapses.
 /// </summary>
 public static class MetadataFetcher
 {
-    private const int WorkerCount = 4;
+    // High enough that a magnet with a healthy swarm gets metadata within one or two
+    // tracker/DHT announce cycles rather than working through a handful of candidates at a
+    // time - metadata fetch attempts are cheap (one handshake + a few small extension
+    // messages each), so erring toward "try lots of peers" costs little.
+    private const int WorkerCount = 10;
     private const int PerPeerTimeoutSeconds = 15;
 
     public static async Task<bool> TryFetchAsync(

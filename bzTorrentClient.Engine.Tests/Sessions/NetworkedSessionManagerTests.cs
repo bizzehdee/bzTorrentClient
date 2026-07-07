@@ -155,8 +155,12 @@ public class NetworkedSessionManagerTests : IDisposable
         await manager.StartAsync(session.Id);
 
         // StartAsync no longer awaits the metadata fetch inline (it'd block the caller
-        // for up to metadataFetchTimeout) — it runs detached, so give it time to finish.
-        await Task.Delay(TimeSpan.FromMilliseconds(300));
+        // for up to metadataFetchTimeout) — it runs detached, so poll for it to finish
+        // rather than a fixed sleep: MetadataFetcher's worker count is high enough that
+        // under full-suite thread-pool contention a short fixed wait can be flaky.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!connectionManagers[session.Id].Started && DateTime.UtcNow < deadline)
+            await Task.Delay(TimeSpan.FromMilliseconds(20));
 
         // No peers were raised on the fake peer source, so the fetch times out quickly
         // and the session is left with its 0-piece stub metadata.
