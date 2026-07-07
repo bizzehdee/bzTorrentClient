@@ -29,6 +29,14 @@ public sealed class DhtPeerFinder : IDhtPeerFinder
 
     public void StartSearch(byte[] infoHash) => _client.StartSearch(infoHash);
 
+    public IReadOnlyList<DhtNodeInfo> GetNodes() =>
+        _client.GetKnownNodes()
+            .Select(node => new DhtNodeInfo(node.Id, node.EndPoint))
+            .ToList();
+
+    public void SeedNodes(IEnumerable<DhtNodeInfo> nodes) =>
+        _client.AddKnownNodes(nodes.Select(n => new DHTNode(n.Id, n.EndPoint)));
+
     public void Dispose() => _client.Dispose();
 
     private async Task BootstrapAsync()

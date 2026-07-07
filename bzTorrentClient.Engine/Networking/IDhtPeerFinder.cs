@@ -11,4 +11,10 @@ public interface IDhtPeerFinder : IDisposable
     int NodeCount { get; }
 
     void StartSearch(byte[] infoHash);
+
+    /// <summary>Snapshot of the current routing-table nodes, for persisting across restarts.</summary>
+    IReadOnlyList<DhtNodeInfo> GetNodes();
+
+    /// <summary>Seeds the routing table with previously-persisted nodes so the DHT starts warm.</summary>
+    void SeedNodes(IEnumerable<DhtNodeInfo> nodes);
 }

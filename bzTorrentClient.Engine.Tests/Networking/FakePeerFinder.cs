@@ -13,7 +13,14 @@ internal sealed class FakePeerFinder : IDhtPeerFinder, ILanPeerFinder
     public (int Port, string InfoHashHex)? Announced { get; private set; }
     public int NodeCount { get; set; }
 
+    public List<DhtNodeInfo> SeededNodes { get; } = new();
+    public IReadOnlyList<DhtNodeInfo> NodesToReturn { get; set; } = Array.Empty<DhtNodeInfo>();
+
     public void StartSearch(byte[] infoHash) => SearchedInfoHash = infoHash;
+
+    public IReadOnlyList<DhtNodeInfo> GetNodes() => NodesToReturn;
+
+    public void SeedNodes(IEnumerable<DhtNodeInfo> nodes) => SeededNodes.AddRange(nodes);
 
     public void Announce(int listenPort, string infoHashHex) => Announced = (listenPort, infoHashHex);
 

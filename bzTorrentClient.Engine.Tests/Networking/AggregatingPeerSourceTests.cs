@@ -158,6 +158,32 @@ public class AggregatingPeerSourceTests
     }
 
     [Fact]
+    public void Start_SeedsDhtWithPersistedNodes_AndExposesCurrentNodesForHarvest()
+    {
+        var seededNode = new DhtNodeInfo(new byte[] { 1, 2, 3, 4 }, new IPEndPoint(IPAddress.Parse("10.0.0.7"), 6881));
+        var liveNode = new DhtNodeInfo(new byte[] { 9, 9 }, new IPEndPoint(IPAddress.Parse("10.0.0.8"), 6881));
+        var dht = new FakePeerFinder { NodesToReturn = new[] { liveNode } };
+
+        var metadata = new FakeMetadata(1, hashHex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        var source = new AggregatingPeerSource(
+            metadata,
+            listenPort: 6881,
+            localPeerId: "-bz0001-000000000000",
+            trackerClientFactory: _ => new FakeTrackerClient(_ => null),
+            dhtPeerFinderFactory: () => dht,
+            lanPeerFinderFactory: () => new FakePeerFinder(),
+            dhtSeedNodesProvider: () => new[] { seededNode });
+
+        source.Start();
+
+        // Harvest while still running (production reads nodes before tearing the runtime down).
+        Assert.Contains(seededNode, dht.SeededNodes);
+        Assert.Equal(new[] { liveNode }, source.GetDhtNodes());
+
+        source.Stop();
+    }
+
+    [Fact]
     public void Start_NonPrivateTorrent_StartsDhtSearchAndLanAnnounce()
     {
         var dht = new FakePeerFinder();

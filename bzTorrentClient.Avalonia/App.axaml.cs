@@ -84,6 +84,7 @@ public partial class App : Application
                 settings,
                 Path.Combine(appDataDirectory, "ip-blocklist-cache.txt"));
             var peerCacheStore = new JsonPeerCacheStore(Path.Combine(appDataDirectory, "peer-cache.json"));
+            var dhtNodeStore = new JsonDhtNodeStore(Path.Combine(appDataDirectory, "dht-nodes.json"));
             var sessionManager = new NetworkedSessionManager(
                 plainSessionManager,
                 settings,
@@ -92,7 +93,8 @@ public partial class App : Application
                 logger: logger,
                 ipBlocklistProvider: ipBlocklistProvider,
                 enableInboundListener: true,
-                peerCacheStore: peerCacheStore);
+                peerCacheStore: peerCacheStore,
+                dhtNodeStore: dhtNodeStore);
             var addPipeline = new TorrentAddPipeline(sessionManager);
 
             var mainWindowViewModel = new MainWindowViewModel(sessionManager, addPipeline, settings, settingsStore);

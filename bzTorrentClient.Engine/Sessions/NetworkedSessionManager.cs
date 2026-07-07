@@ -57,6 +57,11 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     private readonly IIpBlocklistProvider _ipBlocklistProvider;
     private readonly IPeerCacheStore? _peerCacheStore;
 
+    // DHT routing-table nodes are global (info-hash agnostic), so they're persisted once and
+    // used to warm every torrent's DHT. Loaded at startup, harvested back on shutdown.
+    private readonly IDhtNodeStore? _dhtNodeStore;
+    private readonly IReadOnlyList<DhtNodeInfo> _dhtSeedNodes;
+
     private static readonly TimeSpan DefaultSeedingPolicyCheckInterval = TimeSpan.FromSeconds(5);
     private readonly Timer _seedingPolicyTimer;
 
@@ -79,7 +84,8 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         IDebugLogger? logger = null,
         IIpBlocklistProvider? ipBlocklistProvider = null,
         bool enableInboundListener = false,
-        IPeerCacheStore? peerCacheStore = null)
+        IPeerCacheStore? peerCacheStore = null,
+        IDhtNodeStore? dhtNodeStore = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -92,6 +98,8 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         _defaultTrackerListProvider = defaultTrackerListProvider ?? NullDefaultTrackerListProvider.Instance;
         _ipBlocklistProvider = ipBlocklistProvider ?? NullIpBlocklistProvider.Instance;
         _peerCacheStore = peerCacheStore;
+        _dhtNodeStore = dhtNodeStore;
+        _dhtSeedNodes = dhtNodeStore?.Load() ?? Array.Empty<DhtNodeInfo>();
         _downloadLimiter = new TokenBucketRateLimiter(() => _settings.GlobalDownloadLimitBytesPerSecond);
         _uploadLimiter = new TokenBucketRateLimiter(() => _settings.GlobalUploadLimitBytesPerSecond);
 
@@ -439,12 +447,42 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
                 PersistConnectedPeers(sessionId);
         }
 
+        PersistDhtNodes();
+
         lock (_runtimesLock)
         {
             foreach (var runtime in _runtimes.Values)
                 runtime.Dispose();
             _runtimes.Clear();
         }
+    }
+
+    /// <summary>
+    /// Harvests the union of DHT nodes every running torrent's DHT currently knows and saves
+    /// them globally, so the next launch starts the DHT warm. Deduped by node id.
+    /// </summary>
+    private void PersistDhtNodes()
+    {
+        if (_dhtNodeStore is null)
+            return;
+
+        var byId = new Dictionary<string, DhtNodeInfo>();
+        lock (_runtimesLock)
+        {
+            foreach (var runtime in _runtimes.Values)
+            {
+                if (runtime.PeerSource is not AggregatingPeerSource aggregatingPeerSource)
+                    continue;
+
+                foreach (var node in aggregatingPeerSource.GetDhtNodes())
+                    byId[Convert.ToHexString(node.Id)] = node;
+            }
+        }
+
+        // Only overwrite the persisted set if we actually harvested something, so a session
+        // where DHT never warmed up doesn't wipe a good table from a previous run.
+        if (byId.Count > 0)
+            _dhtNodeStore.Save(byId.Values.ToList());
     }
 
     /// <summary>
@@ -782,7 +820,8 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
             listenPort,
             _localPeerId,
             enableDht: _settings.EnableDht,
-            enableLan: _settings.EnableLpd);
+            enableLan: _settings.EnableLpd,
+            dhtSeedNodesProvider: () => _dhtSeedNodes);
 
     private IPeerConnectionManager DefaultConnectionManagerFactory(TorrentSession session, ITorrentStorage storage, IPieceManager pieceManager) =>
         new PeerConnectionManager(

@@ -63,6 +63,7 @@ public sealed class AggregatingPeerSource : IPeerSource
 
     private readonly bool _enableDht;
     private readonly bool _enableLan;
+    private readonly Func<IReadOnlyList<DhtNodeInfo>>? _dhtSeedNodesProvider;
 
     public AggregatingPeerSource(
         IMetadata metadata,
@@ -73,7 +74,8 @@ public sealed class AggregatingPeerSource : IPeerSource
         Func<ILanPeerFinder>? lanPeerFinderFactory = null,
         TimeSpan? trackerFailureRetryDelay = null,
         bool enableDht = true,
-        bool enableLan = true)
+        bool enableLan = true,
+        Func<IReadOnlyList<DhtNodeInfo>>? dhtSeedNodesProvider = null)
     {
         _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
         _listenPort = listenPort;
@@ -84,6 +86,7 @@ public sealed class AggregatingPeerSource : IPeerSource
         _trackerFailureRetryDelay = trackerFailureRetryDelay ?? TrackerFailureRetryDelay;
         _enableDht = enableDht;
         _enableLan = enableLan;
+        _dhtSeedNodesProvider = dhtSeedNodesProvider;
     }
 
     public void Start()
@@ -113,6 +116,13 @@ public sealed class AggregatingPeerSource : IPeerSource
                     if (_dhtPeerFinder is not null)
                     {
                         _dhtPeerFinder.PeerFound += OnDhtPeerFound;
+
+                        // Warm the routing table from persisted nodes before searching, so the
+                        // search loop doesn't have to wait for a cold bootstrap to find a node.
+                        var seedNodes = _dhtSeedNodesProvider?.Invoke();
+                        if (seedNodes is { Count: > 0 })
+                            _dhtPeerFinder.SeedNodes(seedNodes);
+
                         _dhtPeerFinder.StartSearch(_metadata.Hash);
                     }
                 }
@@ -172,6 +182,9 @@ public sealed class AggregatingPeerSource : IPeerSource
     /// connection manager that happened to learn about it.
     /// </summary>
     public void NotePeer(IPEndPoint endpoint) => OnPeerFound(endpoint);
+
+    /// <summary>The DHT routing-table nodes this torrent's DHT currently knows, for persistence. Empty if DHT is disabled or not running.</summary>
+    public IReadOnlyList<DhtNodeInfo> GetDhtNodes() => _dhtPeerFinder?.GetNodes() ?? Array.Empty<DhtNodeInfo>();
 
     private void OnDhtPeerFound(IPEndPoint endpoint)
     {
