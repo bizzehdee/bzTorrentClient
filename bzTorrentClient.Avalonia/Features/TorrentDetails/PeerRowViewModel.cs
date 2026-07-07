@@ -20,6 +20,12 @@ public sealed partial class PeerRowViewModel : ViewModelBase
     public IPEndPoint EndPoint { get; }
 
     [ObservableProperty]
+    private PeerTransportKind _transport;
+
+    [ObservableProperty]
+    private bool _isEncrypted;
+
+    [ObservableProperty]
     private bool _isDownloading;
 
     [ObservableProperty]
@@ -42,6 +48,9 @@ public sealed partial class PeerRowViewModel : ViewModelBase
 
     public void UpdateFrom(PeerConnectionInfo info)
     {
+        Transport = info.Transport;
+        IsEncrypted = info.IsEncrypted;
+
         var now = DateTime.UtcNow;
         var elapsed = now - _lastSampleTimeUtc;
 

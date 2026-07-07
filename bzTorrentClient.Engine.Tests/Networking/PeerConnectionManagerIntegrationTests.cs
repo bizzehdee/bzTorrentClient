@@ -71,6 +71,7 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
         var peer = Assert.Single(connectionManager.ConnectedPeers, p => p.EndPoint.Port == port);
         Assert.Equal(pieceData.Length, connectionManager.BytesDownloaded);
         Assert.Equal(pieceData.Length, peer.BytesDownloaded);
+        Assert.Equal(PeerTransportKind.Tcp, peer.Transport);
 
         connectionManager.Stop();
         tcpListener.Stop();

@@ -78,7 +78,13 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         .Select(kvp =>
         {
             var counters = _peerByteCounters.GetOrAdd(kvp.Key, _ => new PeerByteCounters());
-            return new PeerConnectionInfo(kvp.Value, Interlocked.Read(ref counters.BytesDownloaded), Interlocked.Read(ref counters.BytesUploaded));
+            var isEncrypted = _activeClients.TryGetValue(kvp.Key, out var client) && client.IsEncrypted;
+            return new PeerConnectionInfo(
+                kvp.Value,
+                Interlocked.Read(ref counters.BytesDownloaded),
+                Interlocked.Read(ref counters.BytesUploaded),
+                counters.Transport,
+                isEncrypted);
         })
         .ToList();
 
@@ -192,6 +198,8 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         var client = new PeerWireClient(connection) { KeepConnectionAlive = true };
         _activeClients[peerId] = client;
 
+        var transport = typeof(TSocket) == typeof(UTPConnection) ? PeerTransportKind.Utp : PeerTransportKind.Tcp;
+
         client.HandshakeComplete += pwc =>
         {
             SendOurBitfield(pwc);
@@ -277,6 +285,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         {
             client.Connect(endpoint);
             _activeEndpoints[peerId] = endpoint;
+            _peerByteCounters.GetOrAdd(peerId, _ => new PeerByteCounters()).Transport = transport;
         }
         catch (Exception ex) when (ex is SocketException or IOException)
         {
@@ -346,6 +355,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
     {
         public long BytesDownloaded;
         public long BytesUploaded;
+        public PeerTransportKind Transport;
     }
 
     private void SendOurBitfield(IPeerWireClient client)

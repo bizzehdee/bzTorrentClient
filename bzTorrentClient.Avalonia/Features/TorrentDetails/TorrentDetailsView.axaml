@@ -53,15 +53,21 @@
                     <ListBox ItemsSource="{Binding Peers}" Background="Transparent">
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:PeerRowViewModel">
-                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10" Margin="0,2">
+                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10" Margin="0,2">
                                     <TextBlock Grid.Column="0" Classes="Mono" Text="{Binding EndPoint}" TextTrimming="CharacterEllipsis"/>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                        <Border Classes="Pill">
+                                            <TextBlock Classes="Caption" Text="{Binding Transport, Converter={x:Static vm:PeerActivityConverters.TransportToText}}"/>
+                                        </Border>
+                                        <TextBlock Classes="Caption" Text="🔒" IsVisible="{Binding IsEncrypted}" ToolTip.Tip="MSE encrypted"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
                                                 Opacity="{Binding IsDownloading, Converter={x:Static vm:PeerActivityConverters.ToOpacity}}"
                                                 ToolTip.Tip="Downloading from this peer">
                                         <TextBlock Classes="Caption" Text="↓"/>
                                         <TextBlock Classes="Caption" Text="{Binding DownloadSpeedText}"/>
                                     </StackPanel>
-                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4"
                                                 Opacity="{Binding IsUploading, Converter={x:Static vm:PeerActivityConverters.ToOpacity}}"
                                                 ToolTip.Tip="Uploading to this peer">
                                         <TextBlock Classes="Caption" Text="↑"/>

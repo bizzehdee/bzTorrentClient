@@ -1,4 +1,5 @@
 using Avalonia.Data.Converters;
+using bzTorrentClient.Engine.Networking;
 
 namespace bzTorrentClient.Avalonia.Features.TorrentDetails;
 
@@ -6,4 +7,10 @@ namespace bzTorrentClient.Avalonia.Features.TorrentDetails;
 public static class PeerActivityConverters
 {
     public static readonly IValueConverter ToOpacity = new FuncValueConverter<bool, double>(isActive => isActive ? 1.0 : 0.35);
+
+    public static readonly IValueConverter TransportToText = new FuncValueConverter<PeerTransportKind, string>(transport => transport switch
+    {
+        PeerTransportKind.Utp => "uTP",
+        _ => "TCP",
+    });
 }

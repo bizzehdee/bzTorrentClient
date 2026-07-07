@@ -68,7 +68,7 @@ public class TorrentDetailsViewModelTests : IDisposable
         var sessionManager = new FakeSessionManager();
         var session = await sessionManager.AddAsync(Source(), "/downloads", false);
         var endpoint = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 6881);
-        sessionManager.ConnectedPeers[session.Id] = new List<PeerConnectionInfo> { new(endpoint, 0, 0) };
+        sessionManager.ConnectedPeers[session.Id] = new List<PeerConnectionInfo> { new(endpoint, 0, 0, PeerTransportKind.Tcp, false) };
         var viewModel = new TorrentDetailsViewModel(sessionManager);
 
         viewModel.ShowSession(session.Id);
@@ -77,17 +77,33 @@ public class TorrentDetailsViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task ShowSession_PeerRow_ReflectsTransportAndEncryption()
+    {
+        var sessionManager = new FakeSessionManager();
+        var session = await sessionManager.AddAsync(Source(), "/downloads", false);
+        var endpoint = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 6881);
+        sessionManager.ConnectedPeers[session.Id] = new List<PeerConnectionInfo> { new(endpoint, 0, 0, PeerTransportKind.Utp, true) };
+        var viewModel = new TorrentDetailsViewModel(sessionManager);
+
+        viewModel.ShowSession(session.Id);
+
+        var peer = Assert.Single(viewModel.Peers);
+        Assert.Equal(PeerTransportKind.Utp, peer.Transport);
+        Assert.True(peer.IsEncrypted);
+    }
+
+    [Fact]
     public async Task ShowSession_PeerRow_ReflectsUploadAndDownloadSpeed()
     {
         var sessionManager = new FakeSessionManager();
         var session = await sessionManager.AddAsync(Source(), "/downloads", false);
         var endpoint = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 6881);
-        sessionManager.ConnectedPeers[session.Id] = new List<PeerConnectionInfo> { new(endpoint, 0, 0) };
+        sessionManager.ConnectedPeers[session.Id] = new List<PeerConnectionInfo> { new(endpoint, 0, 0, PeerTransportKind.Tcp, false) };
         var viewModel = new TorrentDetailsViewModel(sessionManager);
         viewModel.ShowSession(session.Id);
 
         await Task.Delay(600); // Exceed PeerRowViewModel's minimum sample interval.
-        sessionManager.ConnectedPeers[session.Id] = new List<PeerConnectionInfo> { new(endpoint, 1000, 2000) };
+        sessionManager.ConnectedPeers[session.Id] = new List<PeerConnectionInfo> { new(endpoint, 1000, 2000, PeerTransportKind.Tcp, true) };
         viewModel.Refresh();
 
         var peer = Assert.Single(viewModel.Peers);
