@@ -82,6 +82,19 @@ public sealed class RarestFirstPieceManager : IPieceManager
     {
         lock (_lock)
         {
+            // Release any blocks this peer had an outstanding request for but never delivered
+            // (it dropped mid-piece), so another peer can be offered them. Without this the
+            // blocks stay flagged "requested" forever and the partially-downloaded piece never
+            // finishes. Received blocks are left alone - they're done, just not by this peer.
+            foreach (var progress in _inProgress.Values)
+            {
+                for (var i = 0; i < progress.RequestedBy.Length; i++)
+                {
+                    if (progress.RequestedBy[i] == peerId && !progress.Received[i])
+                        progress.RequestedBy[i] = NotRequested;
+                }
+            }
+
             if (!_peerBitfields.Remove(peerId, out var bitfield))
                 return;
 
@@ -107,7 +120,7 @@ public sealed class RarestFirstPieceManager : IPieceManager
                 if (pieceIndex >= peerBitfield.Length || !peerBitfield[pieceIndex])
                     continue;
 
-                var next = NextUnrequestedBlock(pieceIndex, progress);
+                var next = NextUnrequestedBlock(pieceIndex, progress, peerId);
                 if (next is not null)
                     return next;
             }
@@ -118,7 +131,7 @@ public sealed class RarestFirstPieceManager : IPieceManager
 
             var progressState = new PieceProgress(BlockCountFor(candidate));
             _inProgress[candidate] = progressState;
-            return NextUnrequestedBlock(candidate, progressState);
+            return NextUnrequestedBlock(candidate, progressState, peerId);
         }
     }
 
@@ -186,7 +199,8 @@ public sealed class RarestFirstPieceManager : IPieceManager
             var blockIndex = blockOffset / BlockSize;
             if (blockIndex >= 0 && blockIndex < progress.Received.Length)
             {
-                progress.Requested[blockIndex] = true;
+                // A block can arrive from a peer we never requested it from, or after its
+                // original requester dropped and it was re-offered - either way it's done now.
                 progress.Received[blockIndex] = true;
             }
 
@@ -215,14 +229,17 @@ public sealed class RarestFirstPieceManager : IPieceManager
     private int BlockCountFor(int pieceIndex) =>
         (int)Math.Ceiling(_storage.GetPieceLength(pieceIndex) / (double)BlockSize);
 
-    private BlockRequest? NextUnrequestedBlock(int pieceIndex, PieceProgress progress)
+    private BlockRequest? NextUnrequestedBlock(int pieceIndex, PieceProgress progress, int peerId)
     {
-        for (var i = 0; i < progress.Requested.Length; i++)
+        for (var i = 0; i < progress.RequestedBy.Length; i++)
         {
-            if (progress.Requested[i])
+            // Offer only blocks that aren't already received and don't have an outstanding
+            // request. A block released by a dropped peer (RequestedBy reset to NotRequested)
+            // becomes offerable again here.
+            if (progress.Received[i] || progress.RequestedBy[i] != NotRequested)
                 continue;
 
-            progress.Requested[i] = true;
+            progress.RequestedBy[i] = peerId;
             var offset = i * BlockSize;
             var length = (int)Math.Min(BlockSize, _storage.GetPieceLength(pieceIndex) - offset);
             return new BlockRequest(pieceIndex, offset, length);
@@ -231,14 +248,19 @@ public sealed class RarestFirstPieceManager : IPieceManager
         return null;
     }
 
+    /// <summary>Sentinel for a block that has no outstanding request (never requested, or released when its requester dropped). Peer ids are always positive.</summary>
+    private const int NotRequested = -1;
+
     private sealed class PieceProgress
     {
-        public bool[] Requested { get; }
+        /// <summary>Per block: the peer id with an outstanding request for it, or <see cref="NotRequested"/>.</summary>
+        public int[] RequestedBy { get; }
         public bool[] Received { get; }
 
         public PieceProgress(int blockCount)
         {
-            Requested = new bool[blockCount];
+            RequestedBy = new int[blockCount];
+            Array.Fill(RequestedBy, NotRequested);
             Received = new bool[blockCount];
         }
     }

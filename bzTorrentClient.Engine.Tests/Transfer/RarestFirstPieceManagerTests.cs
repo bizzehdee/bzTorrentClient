@@ -201,6 +201,50 @@ public class RarestFirstPieceManagerTests : IDisposable
     }
 
     [Fact]
+    public void UnregisterPeer_ReleasesDroppedPeersOutstandingBlocks_SoAnotherPeerFinishesThePiece()
+    {
+        // Regression: a peer requests blocks of a piece then drops before delivering them all.
+        // The undelivered blocks must be re-offered to another peer, or the partially-
+        // downloaded piece stalls forever.
+        var pieceSize = RarestFirstPieceManager.BlockSize * 2;
+        var content = new byte[pieceSize];
+        var hash = SHA1.HashData(content);
+        var metadata = new FakeMetadata(
+            1,
+            pieceSize: pieceSize,
+            pieceHashes: new[] { hash },
+            files: new[] { new MetadataFileInfo { Id = 0, Filename = "file.bin", FileStartByte = 0, FileSize = pieceSize } });
+        var storage = new FileSystemTorrentStorage(metadata, _tempDir);
+        storage.EnsureAllocated();
+
+        var manager = new RarestFirstPieceManager(metadata, storage);
+        manager.RegisterPeerBitfield(1, new[] { true });
+        manager.RegisterPeerBitfield(2, new[] { true });
+
+        // Peer 1 takes both blocks of the piece...
+        var block1 = manager.TryGetNextRequest(1, new[] { true });
+        var block2 = manager.TryGetNextRequest(1, new[] { true });
+        Assert.NotNull(block1);
+        Assert.NotNull(block2);
+
+        // ...delivers one, then drops before delivering the other.
+        manager.OnBlockReceived(0, block1!.BlockOffset, new byte[block1.Length]);
+
+        // While peer 1 still "holds" the second block, peer 2 has nothing left to request.
+        Assert.Null(manager.TryGetNextRequest(2, new[] { true }));
+
+        manager.UnregisterPeer(1);
+
+        // Now the abandoned (undelivered) block is re-offered to peer 2 - the piece can finish.
+        var reoffered = manager.TryGetNextRequest(2, new[] { true });
+        Assert.NotNull(reoffered);
+        Assert.Equal(block2!.BlockOffset, reoffered!.BlockOffset);
+
+        // The block peer 1 did deliver is not re-requested.
+        Assert.Null(manager.TryGetNextRequest(2, new[] { true }));
+    }
+
+    [Fact]
     public void TryGetNextRequest_DoesNotReRequestAlreadyRequestedBlock()
     {
         // A piece spanning two blocks, so the second TryGetNextRequest call must move
