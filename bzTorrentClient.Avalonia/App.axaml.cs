@@ -55,6 +55,7 @@ public partial class App : Application
             using (var db = new BzTorrentClientDbContext(dbOptions))
             {
                 db.Database.EnsureCreated();
+                SqliteSchemaUpgrader.EnsureColumnsExist(db);
             }
 
             var sessionStore = new EfSessionStore(dbOptions);
