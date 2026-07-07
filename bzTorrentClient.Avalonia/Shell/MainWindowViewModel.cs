@@ -27,12 +27,16 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public IRelayCommand OpenAddTorrentCommand { get; }
     public IRelayCommand OpenSettingsCommand { get; }
+    public IRelayCommand OpenAboutCommand { get; }
 
     /// <summary>The view opens the Add Torrent dialog in response to this (keeps Avalonia Window APIs out of the view model).</summary>
     public event EventHandler? AddTorrentRequested;
 
     /// <summary>The view opens the Settings dialog in response to this.</summary>
     public event EventHandler? SettingsRequested;
+
+    /// <summary>The view opens the About dialog in response to this.</summary>
+    public event EventHandler? AboutRequested;
 
     /// <summary>The view confirms (delete files? remember the answer?) before <see cref="RemoveTorrentAsync"/> is called.</summary>
     public event EventHandler<Guid>? ConfirmRemoveRequested;
@@ -56,6 +60,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         OpenAddTorrentCommand = new RelayCommand(() => AddTorrentRequested?.Invoke(this, EventArgs.Empty));
         OpenSettingsCommand = new RelayCommand(() => SettingsRequested?.Invoke(this, EventArgs.Empty));
+        OpenAboutCommand = new RelayCommand(() => AboutRequested?.Invoke(this, EventArgs.Empty));
 
         _refreshTimer = new DispatcherTimer { Interval = RefreshInterval };
         _refreshTimer.Tick += (_, _) =>

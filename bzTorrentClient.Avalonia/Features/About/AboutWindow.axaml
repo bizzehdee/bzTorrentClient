@@ -1,0 +1,40 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:bzTorrentClient.Avalonia.Features.About"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="260"
+        x:Class="bzTorrentClient.Avalonia.Features.About.AboutWindow"
+        x:DataType="vm:AboutViewModel"
+        Width="440" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AppBackgroundBrush}"
+        Title="About">
+
+    <StackPanel Margin="{StaticResource SpaceLgThickness}" Spacing="{StaticResource SpaceMd}">
+
+        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceMd}">
+            <Image Source="/Assets/bztorrent-256.png" Width="72" Height="72" VerticalAlignment="Top"/>
+
+            <StackPanel Spacing="{StaticResource SpaceXs}" VerticalAlignment="Center">
+                <TextBlock Classes="Body" Text="{Binding VersionLine}"/>
+                <TextBlock Classes="Body" Text="{Binding Copyright}"/>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Classes="Body" Text="Licence:" VerticalAlignment="Center"/>
+                    <HyperlinkButton Content="GPLv3" Padding="0"
+                                     NavigateUri="https://github.com/bizzehdee/bzTorrentClient/blob/main/LICENSE"/>
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+
+        <HyperlinkButton HorizontalAlignment="Left" Padding="0"
+                         Content="https://github.com/bizzehdee/bzTorrentClient"
+                         NavigateUri="https://github.com/bizzehdee/bzTorrentClient"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Classes="Primary" Content="Close" Click="OnCloseClick" IsDefault="True"/>
+        </StackPanel>
+
+    </StackPanel>
+
+</Window>

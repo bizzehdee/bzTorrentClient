@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using bzTorrentClient.Avalonia.Features.About;
 using bzTorrentClient.Avalonia.Features.AddTorrent;
 using bzTorrentClient.Avalonia.Features.RemoveTorrent;
 using bzTorrentClient.Avalonia.Features.Settings;
@@ -39,6 +40,12 @@ public partial class MainWindow : Window
                     app.ApplyTheme(viewModel.Settings);
             };
 
+            _ = window.ShowDialog(this);
+        };
+
+        viewModel.AboutRequested += (_, _) =>
+        {
+            var window = new AboutWindow { DataContext = new AboutViewModel() };
             _ = window.ShowDialog(this);
         };
 

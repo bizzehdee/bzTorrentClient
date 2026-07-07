@@ -18,19 +18,24 @@
 
         <Grid Grid.Row="0" ColumnDefinitions="64,*,340">
 
-            <!-- Command rail: the app's two global actions, always in the same place. -->
+            <!-- Command rail: the app's global actions, always in the same place -
+                 Add torrent (top), Settings (middle), About (bottom). -->
             <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource BorderBrush1}" BorderThickness="0,0,1,0">
-                <DockPanel Margin="0,16">
-                    <Button Classes="Icon Accent" DockPanel.Dock="Top" HorizontalAlignment="Center"
+                <Grid Margin="0,16" RowDefinitions="Auto,*,Auto">
+                    <Button Grid.Row="0" Classes="Icon Accent" HorizontalAlignment="Center"
                             Command="{Binding OpenAddTorrentCommand}" ToolTip.Tip="Add torrent">
                         <PathIcon Data="{StaticResource IconPlus}" Width="16" Height="16"/>
                     </Button>
-                    <Button Classes="Icon" DockPanel.Dock="Bottom" HorizontalAlignment="Center"
+                    <Button Grid.Row="1" Classes="Icon" HorizontalAlignment="Center" VerticalAlignment="Center"
                             Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings">
                         <PathIcon Data="{StaticResource IconSettings}" Width="16" Height="16"/>
                     </Button>
-                </DockPanel>
+                    <Button Grid.Row="2" Classes="Icon" HorizontalAlignment="Center"
+                            Command="{Binding OpenAboutCommand}" ToolTip.Tip="About">
+                        <Image Source="/Assets/bztorrent-256.png" Width="20" Height="20"/>
+                    </Button>
+                </Grid>
             </Border>
 
             <!-- Swarm list: every torrent this client knows about. -->
