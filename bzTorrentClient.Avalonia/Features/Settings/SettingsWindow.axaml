@@ -78,6 +78,17 @@
                         </StackPanel>
                     </Border>
 
+                    <Border Classes="Card">
+                        <StackPanel Spacing="{StaticResource SpaceSm}">
+                            <TextBlock Classes="Caption" Text="PEER DISCOVERY"/>
+                            <CheckBox Content="DHT (distributed hash table)" IsChecked="{Binding EnableDht}"/>
+                            <CheckBox Content="PEX (peer exchange)" IsChecked="{Binding EnablePex}"/>
+                            <CheckBox Content="Local peer discovery (LAN)" IsChecked="{Binding EnableLpd}"/>
+                            <TextBlock Classes="Body" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                       Text="Always off for private torrents, regardless of these settings."/>
+                        </StackPanel>
+                    </Border>
+
                 </StackPanel>
             </TabItem>
 

@@ -41,4 +41,13 @@ public interface IClientSettings
 
     /// <summary>Light/Dark/Auto (follow the OS). Default Auto.</summary>
     ColorTheme ColorTheme { get; set; }
+
+    /// <summary>Whether to participate in the BitTorrent DHT (BEP-5) for peer discovery. Ignored for private torrents, which must use the tracker only. Default true.</summary>
+    bool EnableDht { get; set; }
+
+    /// <summary>Whether to exchange peers with connected peers via PEX (BEP-11). Ignored for private torrents. Default true.</summary>
+    bool EnablePex { get; set; }
+
+    /// <summary>Whether to announce/discover peers on the local network via Local Peer Discovery (BEP-14). Ignored for private torrents. Default true.</summary>
+    bool EnableLpd { get; set; }
 }

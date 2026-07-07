@@ -86,6 +86,52 @@ public class AggregatingPeerSourceTests
     }
 
     [Fact]
+    public void Start_DhtDisabled_SkipsDhtButStillStartsLan()
+    {
+        var dhtFactoryCalled = false;
+        var lan = new FakePeerFinder();
+        var metadata = new FakeMetadata(1);
+
+        var source = new AggregatingPeerSource(
+            metadata,
+            listenPort: 6881,
+            localPeerId: "-bz0001-000000000000",
+            trackerClientFactory: _ => new FakeTrackerClient(_ => null),
+            dhtPeerFinderFactory: () => { dhtFactoryCalled = true; return new FakePeerFinder(); },
+            lanPeerFinderFactory: () => lan,
+            enableDht: false);
+
+        source.Start();
+        source.Stop();
+
+        Assert.False(dhtFactoryCalled);
+        Assert.Equal((6881, metadata.HashString), lan.Announced);
+    }
+
+    [Fact]
+    public void Start_LpdDisabled_SkipsLanButStillStartsDht()
+    {
+        var dht = new FakePeerFinder();
+        var lanFactoryCalled = false;
+        var metadata = new FakeMetadata(1);
+
+        var source = new AggregatingPeerSource(
+            metadata,
+            listenPort: 6881,
+            localPeerId: "-bz0001-000000000000",
+            trackerClientFactory: _ => new FakeTrackerClient(_ => null),
+            dhtPeerFinderFactory: () => dht,
+            lanPeerFinderFactory: () => { lanFactoryCalled = true; return new FakePeerFinder(); },
+            enableLan: false);
+
+        source.Start();
+        source.Stop();
+
+        Assert.NotNull(dht.SearchedInfoHash);
+        Assert.False(lanFactoryCalled);
+    }
+
+    [Fact]
     public void PeerFound_DeduplicatesSameEndpointAcrossSources()
     {
         var dht = new FakePeerFinder();
@@ -283,6 +329,13 @@ public class AggregatingPeerSourceTests
 
         source.Start();
         await announced.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // announced.Release() (inside the Announce callback) races the polling loop's own
+        // write to TrackerStatuses just after Announce returns - give it a moment to land.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (source.TrackerStatuses.Count == 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+
         source.Stop();
 
         var status = Assert.Single(source.TrackerStatuses);

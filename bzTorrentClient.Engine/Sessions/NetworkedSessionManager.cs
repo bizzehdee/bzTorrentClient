@@ -614,7 +614,12 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     }
 
     private IPeerSource DefaultPeerSourceFactory(TorrentSession session, int listenPort) =>
-        new AggregatingPeerSource(session.Metadata, listenPort, _localPeerId);
+        new AggregatingPeerSource(
+            session.Metadata,
+            listenPort,
+            _localPeerId,
+            enableDht: _settings.EnableDht,
+            enableLan: _settings.EnableLpd);
 
     private IPeerConnectionManager DefaultConnectionManagerFactory(TorrentSession session, ITorrentStorage storage, IPieceManager pieceManager) =>
         new PeerConnectionManager(
@@ -626,7 +631,8 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
             TryReserveConnections,
             ReleaseConnections,
             _downloadLimiter,
-            _uploadLimiter);
+            _uploadLimiter,
+            enablePex: _settings.EnablePex);
 
     private sealed class TorrentRuntime : IDisposable
     {

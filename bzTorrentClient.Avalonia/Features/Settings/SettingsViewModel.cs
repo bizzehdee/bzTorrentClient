@@ -45,6 +45,15 @@ public partial class SettingsViewModel : ViewModelBase
     private ColorTheme _colorTheme;
 
     [ObservableProperty]
+    private bool _enableDht;
+
+    [ObservableProperty]
+    private bool _enablePex;
+
+    [ObservableProperty]
+    private bool _enableLpd;
+
+    [ObservableProperty]
     private string? _errorMessage;
 
     public IReadOnlyList<ColorTheme> ColorThemes { get; } = Enum.GetValues<ColorTheme>();
@@ -70,6 +79,9 @@ public partial class SettingsViewModel : ViewModelBase
         _seedUntilMinutes = settings.SeedUntilMinutes;
         _seedUntilRatio = settings.SeedUntilRatio;
         _colorTheme = settings.ColorTheme;
+        _enableDht = settings.EnableDht;
+        _enablePex = settings.EnablePex;
+        _enableLpd = settings.EnableLpd;
 
         SaveCommand = new RelayCommand(Save);
     }
@@ -131,6 +143,9 @@ public partial class SettingsViewModel : ViewModelBase
             _settings.SeedUntilMinutes = SeedUntilMinutes;
             _settings.SeedUntilRatio = SeedUntilRatio;
             _settings.ColorTheme = ColorTheme;
+            _settings.EnableDht = EnableDht;
+            _settings.EnablePex = EnablePex;
+            _settings.EnableLpd = EnableLpd;
             _settingsStore.Save(_settings);
         }
         catch (Exception ex)

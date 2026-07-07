@@ -36,6 +36,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
     private readonly Action<int> _releaseConnections;
     private readonly IRateLimiter _downloadLimiter;
     private readonly IRateLimiter _uploadLimiter;
+    private readonly bool _enablePex;
 
     private readonly ConcurrentQueue<IPEndPoint> _candidates = new();
     private readonly HashSet<string> _knownPeers = new();
@@ -59,7 +60,8 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         Func<int, bool> tryReserveConnections,
         Action<int> releaseConnections,
         IRateLimiter? downloadLimiter = null,
-        IRateLimiter? uploadLimiter = null)
+        IRateLimiter? uploadLimiter = null,
+        bool enablePex = true)
     {
         _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
@@ -70,6 +72,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         _releaseConnections = releaseConnections ?? throw new ArgumentNullException(nameof(releaseConnections));
         _downloadLimiter = downloadLimiter ?? new TokenBucketRateLimiter(() => 0);
         _uploadLimiter = uploadLimiter ?? new TokenBucketRateLimiter(() => 0);
+        _enablePex = enablePex;
     }
 
     public int ActiveConnectionCount => _activeClients.Count;
@@ -267,7 +270,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         // reciprocate — a real swarm sees more peers this way than tracker+DHT alone.
         // Skipped for private torrents (BEP-27): peers may only be found via the tracker.
         UTPeerExchange? pex = null;
-        if (!_metadata.Private)
+        if (!_metadata.Private && _enablePex)
         {
             pex = new UTPeerExchange();
             pex.Added += (_, _, pexEndpoint, _) =>

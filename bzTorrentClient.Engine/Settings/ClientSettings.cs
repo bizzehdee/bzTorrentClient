@@ -14,6 +14,9 @@ public sealed class ClientSettings : IClientSettings
     public double SeedUntilRatio { get; set; } = 1.0;
     public bool? RememberedDeleteFilesOnRemove { get; set; }
     public ColorTheme ColorTheme { get; set; } = ColorTheme.Auto;
+    public bool EnableDht { get; set; } = true;
+    public bool EnablePex { get; set; } = true;
+    public bool EnableLpd { get; set; } = true;
 
     public ClientSettings(string? defaultDownloadDirectory = null)
     {

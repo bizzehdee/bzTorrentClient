@@ -139,4 +139,34 @@ public class SettingsViewModelTests
         Assert.Null(viewModel.ErrorMessage);
         Assert.Equal(ColorTheme.Light, settings.ColorTheme);
     }
+
+    [Fact]
+    public void Constructor_DefaultsDiscoveryTogglesFromSettings()
+    {
+        var settings = new ClientSettings("/downloads") { EnableDht = false, EnablePex = false, EnableLpd = false };
+        var viewModel = new SettingsViewModel(settings, new FakeClientSettingsStore());
+
+        Assert.False(viewModel.EnableDht);
+        Assert.False(viewModel.EnablePex);
+        Assert.False(viewModel.EnableLpd);
+    }
+
+    [Fact]
+    public void Save_DiscoveryToggles_PersistsToSettings()
+    {
+        var settings = new ClientSettings("/downloads");
+        var viewModel = new SettingsViewModel(settings, new FakeClientSettingsStore())
+        {
+            EnableDht = false,
+            EnablePex = false,
+            EnableLpd = false,
+        };
+
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.False(settings.EnableDht);
+        Assert.False(settings.EnablePex);
+        Assert.False(settings.EnableLpd);
+    }
 }

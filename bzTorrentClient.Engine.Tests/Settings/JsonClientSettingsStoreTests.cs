@@ -39,6 +39,9 @@ public class JsonClientSettingsStoreTests : IDisposable
             SeedUntilMinutes = 120,
             SeedUntilRatio = 2.5,
             ColorTheme = ColorTheme.Dark,
+            EnableDht = false,
+            EnablePex = false,
+            EnableLpd = false,
         };
 
         store.Save(settings);
@@ -55,6 +58,9 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.Equal(120, reloaded.SeedUntilMinutes);
         Assert.Equal(2.5, reloaded.SeedUntilRatio);
         Assert.Equal(ColorTheme.Dark, reloaded.ColorTheme);
+        Assert.False(reloaded.EnableDht);
+        Assert.False(reloaded.EnablePex);
+        Assert.False(reloaded.EnableLpd);
     }
 
     [Fact]
@@ -64,6 +70,32 @@ public class JsonClientSettingsStoreTests : IDisposable
         var settings = store.Load();
 
         Assert.Equal(ColorTheme.Auto, settings.ColorTheme);
+    }
+
+    [Fact]
+    public void Load_MissingFile_DefaultsDiscoveryTogglesToTrue()
+    {
+        var store = new JsonClientSettingsStore(_filePath);
+        var settings = store.Load();
+
+        Assert.True(settings.EnableDht);
+        Assert.True(settings.EnablePex);
+        Assert.True(settings.EnableLpd);
+    }
+
+    [Fact]
+    public void Load_SettingsFileFromBeforeDiscoveryTogglesExisted_DefaultsToTrue()
+    {
+        // A settings.json saved by an older build won't have these keys at all - they
+        // must come back as enabled (the default), not silently disabled.
+        File.WriteAllText(_filePath, "{ \"DefaultDownloadDirectory\": \"/downloads\" }");
+        var store = new JsonClientSettingsStore(_filePath);
+
+        var settings = store.Load();
+
+        Assert.True(settings.EnableDht);
+        Assert.True(settings.EnablePex);
+        Assert.True(settings.EnableLpd);
     }
 
     [Fact]

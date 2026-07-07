@@ -52,6 +52,9 @@ public sealed class AggregatingPeerSource : IPeerSource
     public int DhtNodeCount => _dhtPeerFinder?.NodeCount ?? 0;
     public IReadOnlyCollection<TrackerStatus> TrackerStatuses => _trackerStatuses.Values.ToList();
 
+    private readonly bool _enableDht;
+    private readonly bool _enableLan;
+
     public AggregatingPeerSource(
         IMetadata metadata,
         int listenPort,
@@ -59,7 +62,9 @@ public sealed class AggregatingPeerSource : IPeerSource
         Func<string, ITrackerClient>? trackerClientFactory = null,
         Func<IDhtPeerFinder>? dhtPeerFinderFactory = null,
         Func<ILanPeerFinder>? lanPeerFinderFactory = null,
-        TimeSpan? trackerFailureRetryDelay = null)
+        TimeSpan? trackerFailureRetryDelay = null,
+        bool enableDht = true,
+        bool enableLan = true)
     {
         _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
         _listenPort = listenPort;
@@ -68,6 +73,8 @@ public sealed class AggregatingPeerSource : IPeerSource
         _dhtPeerFinderFactory = dhtPeerFinderFactory ?? (() => new DhtPeerFinder());
         _lanPeerFinderFactory = lanPeerFinderFactory ?? (() => new LanPeerFinder());
         _trackerFailureRetryDelay = trackerFailureRetryDelay ?? TrackerFailureRetryDelay;
+        _enableDht = enableDht;
+        _enableLan = enableLan;
     }
 
     public void Start()
@@ -89,32 +96,38 @@ public sealed class AggregatingPeerSource : IPeerSource
             // DHT/LAN discovery are best-effort extras on top of trackers — a broken network
             // stack (no multicast route, DHT socket bind failure, etc.) must degrade this
             // torrent to tracker-only peers, not crash the whole session/app.
-            try
+            if (_enableDht)
             {
-                _dhtPeerFinder = _dhtPeerFinderFactory?.Invoke();
-                if (_dhtPeerFinder is not null)
+                try
                 {
-                    _dhtPeerFinder.PeerFound += OnDhtPeerFound;
-                    _dhtPeerFinder.StartSearch(_metadata.Hash);
+                    _dhtPeerFinder = _dhtPeerFinderFactory?.Invoke();
+                    if (_dhtPeerFinder is not null)
+                    {
+                        _dhtPeerFinder.PeerFound += OnDhtPeerFound;
+                        _dhtPeerFinder.StartSearch(_metadata.Hash);
+                    }
                 }
-            }
-            catch (Exception ex) when (ex is SocketException or IOException)
-            {
-                _dhtPeerFinder = null;
+                catch (Exception ex) when (ex is SocketException or IOException)
+                {
+                    _dhtPeerFinder = null;
+                }
             }
 
-            try
+            if (_enableLan)
             {
-                _lanPeerFinder = _lanPeerFinderFactory?.Invoke();
-                if (_lanPeerFinder is not null)
+                try
                 {
-                    _lanPeerFinder.PeerFound += OnLanPeerFound;
-                    _lanPeerFinder.Announce(_listenPort, _metadata.HashString);
+                    _lanPeerFinder = _lanPeerFinderFactory?.Invoke();
+                    if (_lanPeerFinder is not null)
+                    {
+                        _lanPeerFinder.PeerFound += OnLanPeerFound;
+                        _lanPeerFinder.Announce(_listenPort, _metadata.HashString);
+                    }
                 }
-            }
-            catch (Exception ex) when (ex is SocketException or IOException)
-            {
-                _lanPeerFinder = null;
+                catch (Exception ex) when (ex is SocketException or IOException)
+                {
+                    _lanPeerFinder = null;
+                }
             }
         }
     }
