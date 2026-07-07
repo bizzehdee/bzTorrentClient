@@ -77,6 +77,9 @@ public sealed class SessionManager : ISessionManager
     public Task StopAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
         MutateAsync(sessionId, session => session.Stop(), cancellationToken);
 
+    public Task SaveAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
+        MutateAsync(sessionId, static _ => { }, cancellationToken);
+
     public bool TryReserveConnections(int count)
     {
         if (count <= 0)

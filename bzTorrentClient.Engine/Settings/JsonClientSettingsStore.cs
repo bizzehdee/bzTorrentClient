@@ -35,6 +35,8 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
                 // ("unlimited") rather than "unset" — only clamp genuinely invalid negatives.
                 GlobalDownloadLimitBytesPerSecond = Math.Max(0, dto.GlobalDownloadLimitBytesPerSecond),
                 GlobalUploadLimitBytesPerSecond = Math.Max(0, dto.GlobalUploadLimitBytesPerSecond),
+                DefaultTrackerListUrl = dto.DefaultTrackerListUrl ?? string.Empty,
+                DefaultTrackerListText = dto.DefaultTrackerListText ?? string.Empty,
             };
         }
         catch (JsonException)
@@ -55,6 +57,8 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
             ListenPort = settings.ListenPort,
             GlobalDownloadLimitBytesPerSecond = settings.GlobalDownloadLimitBytesPerSecond,
             GlobalUploadLimitBytesPerSecond = settings.GlobalUploadLimitBytesPerSecond,
+            DefaultTrackerListUrl = settings.DefaultTrackerListUrl,
+            DefaultTrackerListText = settings.DefaultTrackerListText,
         };
 
         var directory = Path.GetDirectoryName(_filePath);
@@ -72,5 +76,7 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
         public int ListenPort { get; set; }
         public long GlobalDownloadLimitBytesPerSecond { get; set; }
         public long GlobalUploadLimitBytesPerSecond { get; set; }
+        public string DefaultTrackerListUrl { get; set; } = string.Empty;
+        public string DefaultTrackerListText { get; set; } = string.Empty;
     }
 }

@@ -29,6 +29,13 @@ public partial class TorrentRowViewModel : ViewModelBase
     [ObservableProperty]
     private string _sizeText = string.Empty;
 
+    /// <summary>Total torrent size in bytes — for sorting; <see cref="SizeText"/> is the formatted display value.</summary>
+    [ObservableProperty]
+    private long _sizeBytes;
+
+    /// <summary>When this torrent was added to the client — the "default" sort order.</summary>
+    public DateTime AddedAtUtc { get; private set; }
+
     [ObservableProperty]
     private string _downloadSpeedText = "—";
 
@@ -88,11 +95,13 @@ public partial class TorrentRowViewModel : ViewModelBase
         State = session.State;
         ProgressPercent = Math.Round(session.ProgressFraction * 100, 1);
         PeerCount = stats.ActiveConnections;
+        AddedAtUtc = session.AddedAtUtc;
 
         // "Downloaded" for display is verified progress (pieces confirmed on disk), not the
         // raw byte counter used for speed below — that one also counts bytes from pieces that
         // later failed hash verification and had to be re-requested.
         var totalBytes = session.Metadata.GetFileInfos().Sum(f => f.FileSize);
+        SizeBytes = totalBytes;
         SizeText = $"{ByteFormat.Bytes(session.ProgressFraction * totalBytes)} / {ByteFormat.Bytes(totalBytes)}";
 
         UpdateSpeeds(stats);

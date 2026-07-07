@@ -1,13 +1,37 @@
+using bzTorrent.Data;
 using bzTorrentClient.Avalonia.Features.TorrentList;
 using bzTorrentClient.Avalonia.Tests.Testing;
 using bzTorrentClient.Engine.Sessions;
 
 namespace bzTorrentClient.Avalonia.Tests.Features.TorrentList;
 
-public class TorrentListViewModelTests
+public class TorrentListViewModelTests : IDisposable
 {
+    private readonly string _tempDir = Path.Combine(Path.GetTempPath(), $"bztorrentclient-torrentlist-{Guid.NewGuid():N}");
+
+    public TorrentListViewModelTests()
+    {
+        Directory.CreateDirectory(_tempDir);
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_tempDir))
+            Directory.Delete(_tempDir, recursive: true);
+    }
+
     private static TorrentAddSource.Magnet Source(string hashHex = "0123456789abcdef0123456789abcdef01234567") =>
         TorrentAddSource.Magnet.FromInfoHash(hashHex);
+
+    private TorrentAddSource.TorrentFile RealTorrentSource(string filename, int sizeBytes)
+    {
+        var sourceFile = Path.Combine(_tempDir, filename);
+        File.WriteAllBytes(sourceFile, new byte[sizeBytes]);
+        var metadata = Metadata.CreateFromPath(sourceFile);
+        using var stream = new MemoryStream();
+        metadata.Save(stream);
+        return new TorrentAddSource.TorrentFile(stream.ToArray());
+    }
 
     [Fact]
     public async Task Refresh_AddsRowForNewSession()
@@ -123,5 +147,77 @@ public class TorrentListViewModelTests
         viewModel.SelectedTorrent = viewModel.Torrents.Single();
 
         Assert.Equal(session.Id, selected);
+    }
+
+    [Fact]
+    public async Task SortMode_Default_OrdersByAddedOrder()
+    {
+        var sessionManager = new FakeSessionManager();
+        var first = await sessionManager.AddAsync(RealTorrentSource("b-first-added.bin", 10), "/downloads", false);
+        var second = await sessionManager.AddAsync(RealTorrentSource("a-second-added.bin", 10), "/downloads", false);
+        var viewModel = new TorrentListViewModel(sessionManager);
+
+        viewModel.Refresh();
+
+        Assert.Equal(new[] { first.Id, second.Id }, viewModel.Torrents.Select(t => t.Id));
+    }
+
+    [Fact]
+    public async Task SortMode_Size_OrdersLargestFirst()
+    {
+        var sessionManager = new FakeSessionManager();
+        var small = await sessionManager.AddAsync(RealTorrentSource("small.bin", 10), "/downloads", false);
+        var large = await sessionManager.AddAsync(RealTorrentSource("large.bin", 1000), "/downloads", false);
+        var viewModel = new TorrentListViewModel(sessionManager);
+        viewModel.Refresh();
+
+        viewModel.SortMode = TorrentSortMode.Size;
+
+        Assert.Equal(new[] { large.Id, small.Id }, viewModel.Torrents.Select(t => t.Id));
+    }
+
+    [Fact]
+    public async Task SortMode_Name_OrdersAlphabetically()
+    {
+        var sessionManager = new FakeSessionManager();
+        var zebra = await sessionManager.AddAsync(RealTorrentSource("zebra.bin", 10), "/downloads", false);
+        var apple = await sessionManager.AddAsync(RealTorrentSource("apple.bin", 10), "/downloads", false);
+        var viewModel = new TorrentListViewModel(sessionManager);
+        viewModel.Refresh();
+
+        viewModel.SortMode = TorrentSortMode.Name;
+
+        Assert.Equal(new[] { apple.Id, zebra.Id }, viewModel.Torrents.Select(t => t.Id));
+    }
+
+    [Fact]
+    public async Task SortMode_Progress_OrdersMostCompleteFirst()
+    {
+        var sessionManager = new FakeSessionManager();
+        var behind = await sessionManager.AddAsync(RealTorrentSource("behind.bin", 100), "/downloads", false);
+        var ahead = await sessionManager.AddAsync(RealTorrentSource("ahead.bin", 100), "/downloads", false);
+        ahead.MarkPieceVerified(0);
+        var viewModel = new TorrentListViewModel(sessionManager);
+        viewModel.Refresh();
+
+        viewModel.SortMode = TorrentSortMode.Progress;
+
+        Assert.Equal(new[] { ahead.Id, behind.Id }, viewModel.Torrents.Select(t => t.Id));
+    }
+
+    [Fact]
+    public async Task SortMode_ChangingBack_PreservesSelection()
+    {
+        var sessionManager = new FakeSessionManager();
+        var a = await sessionManager.AddAsync(RealTorrentSource("zzz.bin", 10), "/downloads", false);
+        var b = await sessionManager.AddAsync(RealTorrentSource("aaa.bin", 10), "/downloads", false);
+        var viewModel = new TorrentListViewModel(sessionManager);
+        viewModel.Refresh();
+        var selectedRow = viewModel.Torrents.Single(t => t.Id == a.Id);
+        viewModel.SelectedTorrent = selectedRow;
+
+        viewModel.SortMode = TorrentSortMode.Name;
+
+        Assert.Same(selectedRow, viewModel.SelectedTorrent);
     }
 }

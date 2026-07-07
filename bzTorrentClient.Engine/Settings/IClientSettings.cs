@@ -12,4 +12,18 @@ public interface IClientSettings
 
     /// <summary>Global upload throughput cap in bytes/second, shared across every torrent. Zero or less means unlimited.</summary>
     long GlobalUploadLimitBytesPerSecond { get; set; }
+
+    /// <summary>
+    /// URL to a plain-text tracker list (one announce URL per line, e.g.
+    /// https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best_ip.txt),
+    /// re-fetched on every launch. Combined with <see cref="DefaultTrackerListText"/> and
+    /// upserted into every non-private torrent's own tracker list. Empty disables it.
+    /// </summary>
+    string DefaultTrackerListUrl { get; set; }
+
+    /// <summary>
+    /// User-supplied tracker list (one announce URL per line), combined with
+    /// <see cref="DefaultTrackerListUrl"/>'s fetched content the same way. Empty disables it.
+    /// </summary>
+    string DefaultTrackerListText { get; set; }
 }

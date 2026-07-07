@@ -29,6 +29,15 @@ public interface ISessionManager
     Task PauseAsync(Guid sessionId, CancellationToken cancellationToken = default);
     Task StopAsync(Guid sessionId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Persists a session's current in-memory state as-is, with no state-machine
+    /// transition attached. For changes that happen outside the normal Start/Pause/Stop
+    /// lifecycle - e.g. a magnet session's metadata (and piece hashes) resolving via
+    /// BEP-9, or piece-verification results - and so need an explicit save to survive
+    /// a restart.
+    /// </summary>
+    Task SaveAsync(Guid sessionId, CancellationToken cancellationToken = default);
+
     /// <summary>Attempts to reserve <paramref name="count"/> connections against the global budget.</summary>
     bool TryReserveConnections(int count);
 

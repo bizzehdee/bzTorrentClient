@@ -12,11 +12,16 @@ public partial class TorrentListViewModel : ViewModelBase
 
     public ObservableCollection<TorrentRowViewModel> Torrents { get; } = new();
 
+    public IReadOnlyList<TorrentSortMode> SortModes { get; } = Enum.GetValues<TorrentSortMode>();
+
     [ObservableProperty]
     private TorrentRowViewModel? _selectedTorrent;
 
     [ObservableProperty]
     private string? _lastErrorMessage;
+
+    [ObservableProperty]
+    private TorrentSortMode _sortMode = TorrentSortMode.Default;
 
     public event EventHandler<Guid?>? SelectionChanged;
 
@@ -27,6 +32,8 @@ public partial class TorrentListViewModel : ViewModelBase
     }
 
     partial void OnSelectedTorrentChanged(TorrentRowViewModel? value) => SelectionChanged?.Invoke(this, value?.Id);
+
+    partial void OnSortModeChanged(TorrentSortMode value) => ApplySort();
 
     /// <summary>
     /// Pulls the current session list and per-session peer counts and reconciles them
@@ -55,6 +62,32 @@ public partial class TorrentListViewModel : ViewModelBase
 
             var stats = _runtimeInfoProvider?.GetNetworkStats(session.Id) ?? TorrentNetworkStats.Empty;
             row.UpdateFrom(session, stats);
+        }
+
+        ApplySort();
+    }
+
+    /// <summary>
+    /// Reorders <see cref="Torrents"/> in place via <see cref="ObservableCollection{T}.Move"/>
+    /// rather than clearing and re-adding, so the ListBox's SelectedItem binding (by
+    /// reference) survives a re-sort instead of losing the selection.
+    /// </summary>
+    private void ApplySort()
+    {
+        IOrderedEnumerable<TorrentRowViewModel> ordered = SortMode switch
+        {
+            TorrentSortMode.Progress => Torrents.OrderByDescending(t => t.ProgressPercent),
+            TorrentSortMode.Size => Torrents.OrderByDescending(t => t.SizeBytes),
+            TorrentSortMode.Name => Torrents.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase),
+            _ => Torrents.OrderBy(t => t.AddedAtUtc),
+        };
+
+        var desired = ordered.ToList();
+        for (var i = 0; i < desired.Count; i++)
+        {
+            var currentIndex = Torrents.IndexOf(desired[i]);
+            if (currentIndex != i)
+                Torrents.Move(currentIndex, i);
         }
     }
 }

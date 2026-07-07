@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Net;
 using bzTorrentClient.Avalonia.ViewModels;
+using bzTorrentClient.Engine.Networking;
 using bzTorrentClient.Engine.Sessions;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -26,7 +28,10 @@ public partial class TorrentDetailsViewModel : ViewModelBase
     [ObservableProperty]
     private bool _hasSelection;
 
-    public ObservableCollection<string> Peers { get; } = new();
+    [ObservableProperty]
+    private bool _isFetchingMetadata;
+
+    public ObservableCollection<PeerRowViewModel> Peers { get; } = new();
     public ObservableCollection<FileRowViewModel> Files { get; } = new();
     public ObservableCollection<string> Trackers { get; } = new();
     public ObservableCollection<PieceMapCell> PieceMap { get; } = new();
@@ -53,22 +58,52 @@ public partial class TorrentDetailsViewModel : ViewModelBase
         }
 
         HasSelection = true;
+        IsFetchingMetadata = session.Metadata.PieceHashes.Count == 0;
         Name = string.IsNullOrWhiteSpace(session.Metadata.Name) ? "(fetching metadata…)" : session.Metadata.Name;
         InfoHash = session.Metadata.HashString;
         DownloadDirectory = session.DownloadDirectory;
 
         ReplaceAll(Trackers, session.Metadata.AnnounceList);
-        ReplaceAll(Files, session.Metadata.GetFileInfos().Select(f => new FileRowViewModel(f.Filename, f.FileSize)));
+        ReplaceAll(Files, BuildFileRows(session));
 
-        var peers = _runtimeInfoProvider?.GetConnectedPeers(session.Id).Select(p => p.ToString()) ?? Enumerable.Empty<string>();
-        ReplaceAll(Peers, peers);
+        UpdatePeers(session.Id);
 
         ReplaceAll(PieceMap, BuildPieceMap(session.PieceCompletion));
+    }
+
+    /// <summary>
+    /// Reconciles in place (rather than <see cref="ReplaceAll{T}"/>) - a peer row must
+    /// survive across refreshes for its speed/direction sampling to mean anything.
+    /// </summary>
+    private void UpdatePeers(Guid sessionId)
+    {
+        var infos = _runtimeInfoProvider?.GetConnectedPeers(sessionId) ?? Array.Empty<PeerConnectionInfo>();
+        var seen = new HashSet<IPEndPoint>();
+
+        foreach (var info in infos)
+        {
+            seen.Add(info.EndPoint);
+            var row = Peers.FirstOrDefault(p => p.EndPoint.Equals(info.EndPoint));
+            if (row is null)
+            {
+                row = new PeerRowViewModel(info.EndPoint);
+                Peers.Add(row);
+            }
+
+            row.UpdateFrom(info);
+        }
+
+        for (var i = Peers.Count - 1; i >= 0; i--)
+        {
+            if (!seen.Contains(Peers[i].EndPoint))
+                Peers.RemoveAt(i);
+        }
     }
 
     private void Clear()
     {
         HasSelection = false;
+        IsFetchingMetadata = false;
         Name = string.Empty;
         InfoHash = string.Empty;
         DownloadDirectory = string.Empty;
@@ -76,6 +111,46 @@ public partial class TorrentDetailsViewModel : ViewModelBase
         Files.Clear();
         Peers.Clear();
         PieceMap.Clear();
+    }
+
+    /// <summary>
+    /// A piece counts toward every file it overlaps only once fully verified - completion
+    /// isn't tracked at sub-piece resolution, so this is the same approximation real
+    /// torrent clients use for per-file progress.
+    /// </summary>
+    private static IEnumerable<FileRowViewModel> BuildFileRows(TorrentSession session)
+    {
+        var pieceSize = session.Metadata.PieceSize;
+        var completion = session.PieceCompletion;
+
+        foreach (var file in session.Metadata.GetFileInfos())
+        {
+            if (completion.Length == 0 || pieceSize <= 0 || file.FileSize <= 0)
+            {
+                yield return new FileRowViewModel(file.Filename, file.FileSize, file.FileSize <= 0 ? 100d : 0d);
+                continue;
+            }
+
+            var fileEnd = file.FileStartByte + file.FileSize;
+            var firstPiece = (int)(file.FileStartByte / pieceSize);
+            var lastPiece = (int)Math.Min(completion.Length - 1, (fileEnd - 1) / pieceSize);
+
+            var downloaded = 0L;
+            for (var pieceIndex = firstPiece; pieceIndex <= lastPiece; pieceIndex++)
+            {
+                if (!completion[pieceIndex])
+                    continue;
+
+                var pieceStart = (long)pieceIndex * pieceSize;
+                var pieceEnd = pieceStart + pieceSize;
+                var overlapStart = Math.Max(pieceStart, file.FileStartByte);
+                var overlapEnd = Math.Min(pieceEnd, fileEnd);
+                downloaded += Math.Max(0, overlapEnd - overlapStart);
+            }
+
+            var progressPercent = Math.Round((double)downloaded / file.FileSize * 100, 1);
+            yield return new FileRowViewModel(file.Filename, file.FileSize, progressPercent);
+        }
     }
 
     private static IEnumerable<PieceMapCell> BuildPieceMap(bool[] pieceCompletion)

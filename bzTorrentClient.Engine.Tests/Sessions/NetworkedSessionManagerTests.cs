@@ -5,6 +5,7 @@ using bzTorrentClient.Engine.Settings;
 using bzTorrentClient.Engine.Storage;
 using bzTorrentClient.Engine.Tests.Networking;
 using bzTorrentClient.Engine.Tests.Persistence;
+using bzTorrentClient.Engine.Tests.Testing;
 using bzTorrentClient.Engine.Transfer;
 using Xunit;
 
@@ -24,7 +25,11 @@ public class NetworkedSessionManagerTests : IDisposable
         CreateManager() => CreateManager(new InMemorySessionStore());
 
     private (NetworkedSessionManager manager, Dictionary<Guid, FakePeerSource> peerSources, Dictionary<Guid, FakePeerConnectionManager> connectionManagers, Dictionary<Guid, IPieceManager> pieceManagers)
-        CreateManager(InMemorySessionStore store, Guid? failingSessionId = null, TimeSpan? metadataRetryDelay = null)
+        CreateManager(
+            InMemorySessionStore store,
+            Guid? failingSessionId = null,
+            TimeSpan? metadataRetryDelay = null,
+            IDefaultTrackerListProvider? defaultTrackerListProvider = null)
     {
         var settings = new ClientSettings(_tempDir);
         var inner = new SessionManager(store, settings);
@@ -54,7 +59,8 @@ public class NetworkedSessionManagerTests : IDisposable
                 return fake;
             },
             metadataFetchTimeout: TimeSpan.FromMilliseconds(100),
-            metadataRetryDelay: metadataRetryDelay ?? TimeSpan.FromMilliseconds(100));
+            metadataRetryDelay: metadataRetryDelay ?? TimeSpan.FromMilliseconds(100),
+            defaultTrackerListProvider: defaultTrackerListProvider);
 
         return (manager, peerSources, connectionManagers, pieceManagers);
     }
@@ -64,6 +70,68 @@ public class NetworkedSessionManagerTests : IDisposable
 
     private static TorrentAddSource.Magnet MagnetOnlySource(string hashHex = "0123456789abcdef0123456789abcdef01234567") =>
         TorrentAddSource.Magnet.FromInfoHash(hashHex);
+
+    [Fact]
+    public async Task StartAsync_NonPrivateTorrent_UpsertsDefaultTrackersIntoMetadata()
+    {
+        Directory.CreateDirectory(_tempDir);
+        var sourceFile = Path.Combine(_tempDir, "public-source.bin");
+        await File.WriteAllBytesAsync(sourceFile, Enumerable.Range(0, 20).Select(b => (byte)b).ToArray());
+        var publicMetadata = Metadata.CreateFromPath(sourceFile);
+        using var torrentBytes = new MemoryStream();
+        publicMetadata.Save(torrentBytes);
+
+        var provider = new FakeDefaultTrackerListProvider("udp://new-default-tracker.example.com:1337/announce");
+
+        var (manager, _, _, _) = CreateManager(new InMemorySessionStore(), defaultTrackerListProvider: provider);
+        var session = await manager.AddAsync(new TorrentAddSource.TorrentFile(torrentBytes.ToArray()), _tempDir, false);
+
+        await manager.StartAsync(session.Id);
+
+        Assert.Contains("udp://new-default-tracker.example.com:1337/announce", session.Metadata.AnnounceList);
+    }
+
+    [Fact]
+    public async Task StartAsync_DefaultTrackerAlreadyInTorrentsOwnList_IsNotDuplicated()
+    {
+        var fakeMetadata = new FakeMetadata(pieceCount: 0);
+        fakeMetadata.AnnounceList.Add("udp://existing.example.com:1337/announce");
+
+        var provider = new FakeDefaultTrackerListProvider(
+            "udp://existing.example.com:1337/announce",
+            "udp://new-default-tracker.example.com:1337/announce");
+
+        var store = new InMemorySessionStore();
+        store.Seed(new TorrentSession(MagnetOnlySource(), fakeMetadata, _tempDir));
+
+        var (manager, _, _, _) = CreateManager(store, defaultTrackerListProvider: provider);
+        await manager.InitializeAsync();
+        var session = manager.Sessions.Single();
+
+        await manager.StartAsync(session.Id);
+
+        Assert.Equal(1, session.Metadata.AnnounceList.Count(t => t == "udp://existing.example.com:1337/announce"));
+        Assert.Contains("udp://new-default-tracker.example.com:1337/announce", session.Metadata.AnnounceList);
+    }
+
+    [Fact]
+    public async Task StartAsync_PrivateTorrent_DoesNotAddDefaultTrackers()
+    {
+        var sourceFile = Path.Combine(_tempDir, "private-source.bin");
+        Directory.CreateDirectory(_tempDir);
+        await File.WriteAllBytesAsync(sourceFile, Enumerable.Range(0, 20).Select(b => (byte)b).ToArray());
+        var privateMetadata = Metadata.CreateFromPath(sourceFile, isPrivate: true);
+        using var torrentBytes = new MemoryStream();
+        privateMetadata.Save(torrentBytes);
+
+        var provider = new FakeDefaultTrackerListProvider("udp://new-default-tracker.example.com:1337/announce");
+        var (manager, _, _, _) = CreateManager(new InMemorySessionStore(), defaultTrackerListProvider: provider);
+        var session = await manager.AddAsync(new TorrentAddSource.TorrentFile(torrentBytes.ToArray()), _tempDir, false);
+
+        await manager.StartAsync(session.Id);
+
+        Assert.DoesNotContain("udp://new-default-tracker.example.com:1337/announce", session.Metadata.AnnounceList);
+    }
 
     [Fact]
     public async Task StartAsync_TorrentFileSession_StartsPeerSourceAndConnectionManager()
@@ -291,6 +359,39 @@ public class NetworkedSessionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task InitializeAsync_ResumesSessionsThatWereCompletedOnLastShutdown()
+    {
+        // Regression test: a torrent left Completed when the app last closed should keep
+        // seeding across a restart without the user needing to press Start again - only
+        // an explicit Stop should end that, same as an Active torrent already gets.
+        Directory.CreateDirectory(_tempDir);
+        var sourceFile = Path.Combine(_tempDir, "source.bin");
+        await File.WriteAllBytesAsync(sourceFile, Enumerable.Range(0, 100).Select(b => (byte)b).ToArray());
+        var builtMetadata = Metadata.CreateFromPath(sourceFile);
+        using var torrentBytes = new MemoryStream();
+        builtMetadata.Save(torrentBytes);
+        var torrentFileBytes = torrentBytes.ToArray();
+
+        var store = new InMemorySessionStore();
+        var completedSession = new TorrentSession(
+            Guid.NewGuid(),
+            new TorrentAddSource.TorrentFile(torrentFileBytes),
+            Metadata.FromBuffer(torrentFileBytes),
+            _tempDir,
+            TorrentState.Completed,
+            DateTime.UtcNow,
+            new bool[1]);
+        store.Seed(completedSession);
+
+        var (manager, _, connectionManagers, _) = CreateManager(store);
+        await manager.InitializeAsync();
+
+        var resumed = manager.Sessions.Single();
+        Assert.True(connectionManagers[resumed.Id].Started);
+        Assert.Equal(TorrentState.Completed, resumed.State);
+    }
+
+    [Fact]
     public async Task InitializeAsync_OneSessionFailingToResume_StillResumesTheOthers()
     {
         var store = new InMemorySessionStore();
@@ -310,6 +411,100 @@ public class NetworkedSessionManagerTests : IDisposable
         // firstRunManager's magnet session never found metadata, so it's still retrying
         // in the background — dispose so it doesn't outlive this test.
         firstRunManager.Dispose();
+    }
+
+    [Fact]
+    public async Task InitializeAsync_ResumedSessionHasCompleteDataOnDisk_SkipsRedownloadingIt()
+    {
+        // Regression test: PieceCompletion is only saved on lifecycle transitions, not as
+        // pieces finish, so it can be stale across a restart even for a torrent that
+        // actually finished downloading. Verification against disk must catch this.
+        Directory.CreateDirectory(_tempDir);
+        var sourceFile = Path.Combine(_tempDir, "source.bin");
+        await File.WriteAllBytesAsync(sourceFile, Enumerable.Range(0, 100).Select(b => (byte)b).ToArray());
+        var builtMetadata = Metadata.CreateFromPath(sourceFile);
+        using var torrentBytes = new MemoryStream();
+        builtMetadata.Save(torrentBytes);
+        var torrentFileBytes = torrentBytes.ToArray();
+
+        var store = new InMemorySessionStore();
+        var (firstRunManager, _, _, _) = CreateManager(store);
+        var added = await firstRunManager.AddAsync(new TorrentAddSource.TorrentFile(torrentFileBytes), _tempDir, startImmediately: false);
+
+        // Simulate the torrent having been Active (and fully downloaded) when the app last
+        // closed, but its persisted completion bitfield never having been updated.
+        var entity = await store.LoadAllAsync();
+        var preExisting = entity.Single();
+        var stillIncomplete = new TorrentSession(
+            preExisting.Id,
+            preExisting.Source,
+            preExisting.Metadata,
+            preExisting.DownloadDirectory,
+            TorrentState.Active,
+            preExisting.AddedAtUtc,
+            new bool[preExisting.Metadata.PieceHashes.Count]);
+        store.Seed(stillIncomplete);
+
+        var (secondRunManager, _, secondRunConnectionManagers, secondRunPieceManagers) = CreateManager(store);
+        await secondRunManager.InitializeAsync();
+
+        var resumed = secondRunManager.Sessions.Single(s => s.Id == added.Id);
+        Assert.True(resumed.PieceCompletion[0]);
+        Assert.Equal(1.0, resumed.ProgressFraction);
+        Assert.True(secondRunConnectionManagers[added.Id].Started);
+        Assert.True(secondRunPieceManagers[added.Id].IsPieceComplete(0));
+    }
+
+    [Fact]
+    public async Task InitializeAsync_PausedSessionHasCompleteDataOnDisk_ShowsAccurateProgressWithoutStarting()
+    {
+        // Regression test: what's downloaded must be known from the cached metadata the
+        // moment the torrent list loads, not only once the user hits Start - a Paused
+        // torrent (never auto-resumed) should still show accurate progress right away.
+        Directory.CreateDirectory(_tempDir);
+        var sourceFile = Path.Combine(_tempDir, "source.bin");
+        await File.WriteAllBytesAsync(sourceFile, Enumerable.Range(0, 100).Select(b => (byte)b).ToArray());
+        var builtMetadata = Metadata.CreateFromPath(sourceFile);
+        using var torrentBytes = new MemoryStream();
+        builtMetadata.Save(torrentBytes);
+
+        var store = new InMemorySessionStore();
+        var (firstRunManager, _, _, _) = CreateManager(store);
+        var added = await firstRunManager.AddAsync(new TorrentAddSource.TorrentFile(torrentBytes.ToArray()), _tempDir, startImmediately: false);
+        Assert.Equal(TorrentState.Paused, added.State);
+
+        var (secondRunManager, _, secondRunConnectionManagers, _) = CreateManager(store);
+        await secondRunManager.InitializeAsync();
+
+        var resumed = secondRunManager.Sessions.Single(s => s.Id == added.Id);
+        Assert.True(resumed.PieceCompletion[0]);
+        Assert.Equal(1.0, resumed.ProgressFraction);
+        Assert.Equal(TorrentState.Completed, resumed.State);
+
+        // Never started - no runtime/networking should have been spun up for it.
+        Assert.False(secondRunConnectionManagers.ContainsKey(added.Id));
+    }
+
+    [Fact]
+    public async Task StartAsync_StoppedSessionHasDataOnDisk_RecognizesItWithoutRedownloading()
+    {
+        // Same guarantee, but for a torrent started fresh mid-session (not via app-restart
+        // resume) whose download directory already has matching data in it — e.g. it was
+        // added and stopped earlier this run, or the files were placed there out-of-band.
+        Directory.CreateDirectory(_tempDir);
+        var sourceFile = Path.Combine(_tempDir, "source.bin");
+        await File.WriteAllBytesAsync(sourceFile, Enumerable.Range(0, 100).Select(b => (byte)b).ToArray());
+        var builtMetadata = Metadata.CreateFromPath(sourceFile);
+        using var torrentBytes = new MemoryStream();
+        builtMetadata.Save(torrentBytes);
+
+        var (manager, _, connectionManagers, pieceManagers) = CreateManager();
+        var session = await manager.AddAsync(new TorrentAddSource.TorrentFile(torrentBytes.ToArray()), _tempDir, startImmediately: true);
+
+        Assert.True(session.PieceCompletion[0]);
+        Assert.Equal(1.0, session.ProgressFraction);
+        Assert.True(connectionManagers[session.Id].Started);
+        Assert.True(pieceManagers[session.Id].IsPieceComplete(0));
     }
 
     [Fact]
@@ -338,5 +533,32 @@ public class NetworkedSessionManagerTests : IDisposable
         Assert.True(connectionManagers[session.Id].Started);
 
         manager.Dispose();
+    }
+
+    [Fact]
+    public async Task RunDeferredMetadataFetchAsync_StopsRetryingOncePaused()
+    {
+        // Metadata is only ever fetched for an active torrent - pausing doesn't tear down
+        // the runtime (Stop's job), so without an explicit state check the retry loop would
+        // otherwise keep silently trying in the background even while shown as paused.
+        var (manager, peerSources, _, _) = CreateManager(
+            new InMemorySessionStore(),
+            metadataRetryDelay: TimeSpan.FromMilliseconds(50));
+        var session = await manager.AddAsync(MagnetOnlySource(), null, false);
+
+        await manager.StartAsync(session.Id);
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (peerSources[session.Id].SubscribeCount < 2 && DateTime.UtcNow < deadline)
+            await Task.Delay(TimeSpan.FromMilliseconds(20));
+        Assert.True(peerSources[session.Id].SubscribeCount >= 2);
+
+        await manager.PauseAsync(session.Id);
+        await Task.Delay(TimeSpan.FromMilliseconds(150)); // let any in-flight attempt settle
+        var countAfterPause = peerSources[session.Id].SubscribeCount;
+
+        await Task.Delay(TimeSpan.FromMilliseconds(300));
+
+        Assert.Equal(countAfterPause, peerSources[session.Id].SubscribeCount);
     }
 }

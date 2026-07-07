@@ -42,6 +42,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
     private readonly object _knownPeersLock = new();
     private readonly ConcurrentDictionary<int, IPeerWireClient> _activeClients = new();
     private readonly ConcurrentDictionary<int, IPEndPoint> _activeEndpoints = new();
+    private readonly ConcurrentDictionary<int, PeerByteCounters> _peerByteCounters = new();
     private int _nextPeerId;
     private int _pexPeersFound;
     private long _bytesDownloaded;
@@ -73,7 +74,13 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
 
     public int ActiveConnectionCount => _activeClients.Count;
 
-    public IReadOnlyCollection<IPEndPoint> ConnectedEndpoints => _activeEndpoints.Values.ToList();
+    public IReadOnlyCollection<PeerConnectionInfo> ConnectedPeers => _activeEndpoints
+        .Select(kvp =>
+        {
+            var counters = _peerByteCounters.GetOrAdd(kvp.Key, _ => new PeerByteCounters());
+            return new PeerConnectionInfo(kvp.Value, Interlocked.Read(ref counters.BytesDownloaded), Interlocked.Read(ref counters.BytesUploaded));
+        })
+        .ToList();
 
     public int PexPeersFound => Volatile.Read(ref _pexPeersFound);
     public long BytesDownloaded => Interlocked.Read(ref _bytesDownloaded);
@@ -147,12 +154,41 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
 
     private void RunPeerConnection(int peerId, IPEndPoint endpoint, CancellationToken cancellationToken)
     {
+        // Most of the swarm is reachable over plain TCP, so try that first. A peer TCP
+        // can't even connect to (e.g. behind a NAT/firewall that passes outbound UDP but
+        // blocks unsolicited inbound TCP SYNs) gets one retry over uTP (BEP-29) before
+        // being given up on entirely.
+        if (RunPeerConnectionOverTransport<TCPSocket>(peerId, endpoint, cancellationToken))
+            return;
+
+        if (RunPeerConnectionOverTransport<UTPConnection>(peerId, endpoint, cancellationToken))
+            return;
+
+        CleanUp(peerId);
+    }
+
+    /// <returns>
+    /// False only when the connection itself never came up at all - the one case worth
+    /// retrying over a different transport. True in every other case (connected and ran
+    /// until disconnect/cancellation), whether or not the peer turned out to be useless;
+    /// cleanup has already run internally for that case, same as before this was split
+    /// out per-transport.
+    /// </returns>
+    private bool RunPeerConnectionOverTransport<TSocket>(int peerId, IPEndPoint endpoint, CancellationToken cancellationToken)
+        where TSocket : ISocket, new()
+    {
         var choked = true;
         var inflight = 0;
         var peerBitfield = new bool[_metadata.PieceHashes.Count];
         var connectedAt = DateTime.UtcNow;
 
-        var connection = new PeerWireConnection<TCPSocket> { Timeout = 30, EncryptionMode = PeerEncryptionMode.PlainText };
+        // A large share of real-world peers require or strongly prefer MSE/PE-encrypted
+        // connections (many ISPs throttle/block plaintext BitTorrent traffic) — PlainText
+        // here meant every such peer's handshake silently went nowhere: peers were found
+        // (tracker/DHT/PEX all work independently of this), but nothing ever downloaded.
+        // PreferEncryption negotiates MSE when the peer supports it and falls back to
+        // plaintext when it doesn't, same default most mature clients use.
+        var connection = new PeerWireConnection<TSocket> { Timeout = 30, EncryptionMode = PeerEncryptionMode.PreferEncryption };
         var client = new PeerWireClient(connection) { KeepConnectionAlive = true };
         _activeClients[peerId] = client;
 
@@ -201,6 +237,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
                 Array.Copy(pieceData, start, block, 0, length);
                 pwc.SendPiece((uint)index, (uint)start, block);
                 Interlocked.Add(ref _bytesUploaded, block.Length);
+                Interlocked.Add(ref _peerByteCounters.GetOrAdd(peerId, _ => new PeerByteCounters()).BytesUploaded, block.Length);
             }
             catch (IOException)
             {
@@ -212,6 +249,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         {
             inflight = Math.Max(0, inflight - 1);
             Interlocked.Add(ref _bytesDownloaded, buffer.Length);
+            Interlocked.Add(ref _peerByteCounters.GetOrAdd(peerId, _ => new PeerByteCounters()).BytesDownloaded, buffer.Length);
             var completedPiece = _pieceManager.OnBlockReceived(index, start, buffer);
             if (completedPiece is not null)
                 BroadcastHave(completedPiece.Value);
@@ -242,8 +280,9 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         }
         catch (Exception ex) when (ex is SocketException or IOException)
         {
-            CleanUp(peerId);
-            return;
+            // Didn't even connect - leave peerId's registration alone (no handshake ever
+            // happened, nothing to unwind) so the caller can retry it over another transport.
+            return false;
         }
 
         try
@@ -290,14 +329,23 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
             PeerWireSafety.SafeDisconnect(client);
             CleanUp(peerId);
         }
+
+        return true;
     }
 
     private void CleanUp(int peerId)
     {
         _activeClients.TryRemove(peerId, out _);
         _activeEndpoints.TryRemove(peerId, out _);
+        _peerByteCounters.TryRemove(peerId, out _);
         _pieceManager.UnregisterPeer(peerId);
         _releaseConnections(1);
+    }
+
+    private sealed class PeerByteCounters
+    {
+        public long BytesDownloaded;
+        public long BytesUploaded;
     }
 
     private void SendOurBitfield(IPeerWireClient client)

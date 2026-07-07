@@ -68,8 +68,9 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
         var completed = await SpinUntilAsync(() => pieceManager.IsComplete, TimeSpan.FromSeconds(10));
 
         Assert.Equal(1, connectionManager.ActiveConnectionCount);
-        Assert.Contains(connectionManager.ConnectedEndpoints, ep => ep.Port == port);
+        var peer = Assert.Single(connectionManager.ConnectedPeers, p => p.EndPoint.Port == port);
         Assert.Equal(pieceData.Length, connectionManager.BytesDownloaded);
+        Assert.Equal(pieceData.Length, peer.BytesDownloaded);
 
         connectionManager.Stop();
         tcpListener.Stop();
@@ -139,14 +140,45 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
     private static Task RunRawSeederAsync(TcpListener listener, byte[] pieceData) =>
         RunRawSeederAsync(listener, pieceData, requestsToServe: 1);
 
-    /// <summary>Minimal BEP-3 peer: handshake, send an all-ones bitfield, unchoke on Interested, serve up to <paramref name="requestsToServe"/> Requests.</summary>
+    /// <summary>
+    /// Minimal BEP-3 peer: handshake, send an all-ones bitfield, unchoke on Interested,
+    /// serve up to <paramref name="requestsToServe"/> Requests. Plaintext-only - like a
+    /// real legacy peer, a connection that opens with anything other than a plaintext
+    /// BitTorrent handshake (i.e. our own PreferEncryption client's MSE offer) is just
+    /// closed rather than answered, so the client's plaintext fallback gets a prompt
+    /// "connection closed" instead of hanging until its socket timeout.
+    /// </summary>
     private static async Task RunRawSeederAsync(TcpListener listener, byte[] pieceData, int requestsToServe)
     {
-        using var client = await listener.AcceptTcpClientAsync();
-        using var stream = client.GetStream();
-
+        TcpClient client;
+        NetworkStream stream;
         var incomingHandshake = new byte[68];
-        await ReadExactAsync(stream, incomingHandshake);
+
+        while (true)
+        {
+            var candidate = await listener.AcceptTcpClientAsync();
+            var candidateStream = candidate.GetStream();
+
+            if (!await TryReadExactAsync(candidateStream, incomingHandshake.AsMemory(0, 1)))
+            {
+                candidate.Dispose();
+                continue;
+            }
+
+            if (incomingHandshake[0] != 19)
+            {
+                candidate.Dispose();
+                continue;
+            }
+
+            await ReadExactAsync(candidateStream, incomingHandshake.AsMemory(1, 67));
+            client = candidate;
+            stream = candidateStream;
+            break;
+        }
+
+        using var __ = client;
+        using var _ = stream;
 
         var infoHash = new byte[20];
         Array.Copy(incomingHandshake, 28, infoHash, 0, 20);
@@ -209,18 +241,18 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
         return buffer;
     }
 
-    private static async Task ReadExactAsync(NetworkStream stream, byte[] buffer)
+    private static async Task ReadExactAsync(NetworkStream stream, Memory<byte> buffer)
     {
         if (!await TryReadExactAsync(stream, buffer))
             throw new IOException("Connection closed before the expected bytes arrived.");
     }
 
-    private static async Task<bool> TryReadExactAsync(NetworkStream stream, byte[] buffer)
+    private static async Task<bool> TryReadExactAsync(NetworkStream stream, Memory<byte> buffer)
     {
         var totalRead = 0;
         while (totalRead < buffer.Length)
         {
-            var read = await stream.ReadAsync(buffer.AsMemory(totalRead, buffer.Length - totalRead));
+            var read = await stream.ReadAsync(buffer[totalRead..]);
             if (read == 0)
                 return false;
             totalRead += read;

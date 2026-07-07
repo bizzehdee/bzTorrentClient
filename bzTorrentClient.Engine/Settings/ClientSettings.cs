@@ -8,6 +8,8 @@ public sealed class ClientSettings : IClientSettings
     public int ListenPort { get; set; } = 6881;
     public long GlobalDownloadLimitBytesPerSecond { get; set; }
     public long GlobalUploadLimitBytesPerSecond { get; set; }
+    public string DefaultTrackerListUrl { get; set; } = string.Empty;
+    public string DefaultTrackerListText { get; set; } = string.Empty;
 
     public ClientSettings(string? defaultDownloadDirectory = null)
     {

@@ -13,7 +13,9 @@ internal sealed class FakePeerConnectionManager : IPeerConnectionManager
 
     public int ActiveConnectionCount => Candidates.Count;
 
-    public IReadOnlyCollection<IPEndPoint> ConnectedEndpoints => Candidates;
+    public List<PeerConnectionInfo> Peers { get; } = new();
+
+    public IReadOnlyCollection<PeerConnectionInfo> ConnectedPeers => Peers;
 
     public int PexPeersFound { get; set; }
     public long BytesDownloaded { get; set; }

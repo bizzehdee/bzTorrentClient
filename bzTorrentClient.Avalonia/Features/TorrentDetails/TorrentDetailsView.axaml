@@ -52,23 +52,48 @@
                 <TabItem Header="Peers">
                     <ListBox ItemsSource="{Binding Peers}" Background="Transparent">
                         <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Classes="Mono" Text="{Binding}"/>
+                            <DataTemplate x:DataType="vm:PeerRowViewModel">
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10" Margin="0,2">
+                                    <TextBlock Grid.Column="0" Classes="Mono" Text="{Binding EndPoint}" TextTrimming="CharacterEllipsis"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                                Opacity="{Binding IsDownloading, Converter={x:Static vm:PeerActivityConverters.ToOpacity}}"
+                                                ToolTip.Tip="Downloading from this peer">
+                                        <TextBlock Classes="Caption" Text="↓"/>
+                                        <TextBlock Classes="Caption" Text="{Binding DownloadSpeedText}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                                                Opacity="{Binding IsUploading, Converter={x:Static vm:PeerActivityConverters.ToOpacity}}"
+                                                ToolTip.Tip="Uploading to this peer">
+                                        <TextBlock Classes="Caption" Text="↑"/>
+                                        <TextBlock Classes="Caption" Text="{Binding UploadSpeedText}"/>
+                                    </StackPanel>
+                                </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
                 </TabItem>
                 <TabItem Header="Files">
-                    <ListBox ItemsSource="{Binding Files}" Background="Transparent">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate x:DataType="vm:FileRowViewModel">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Grid.Column="0" Classes="Body" Text="{Binding Filename}" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Grid.Column="1" Classes="Caption" Text="{Binding FileSize, StringFormat='{}{0:N0} B'}" Margin="8,0,0,0"/>
-                                </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                    <Grid>
+                        <TextBlock IsVisible="{Binding IsFetchingMetadata}" Classes="Caption" Text="(fetching metadata…)"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <ListBox IsVisible="{Binding !IsFetchingMetadata}" ItemsSource="{Binding Files}" Background="Transparent">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:FileRowViewModel">
+                                    <StackPanel Spacing="2" Margin="0,4">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Grid.Column="0" Classes="Body" Text="{Binding Filename}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="1" Classes="Caption" Text="{Binding FileSize, StringFormat='{}{0:N0} B'}" Margin="8,0,0,0"/>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <ProgressBar Grid.Column="0" VerticalAlignment="Center"
+                                                         Minimum="0" Maximum="100" Value="{Binding ProgressPercent}"/>
+                                            <TextBlock Grid.Column="1" Classes="Caption" Text="{Binding ProgressPercent, StringFormat={}{0}%}"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
                 </TabItem>
                 <TabItem Header="Trackers">
                     <ListBox ItemsSource="{Binding Trackers}" Background="Transparent">

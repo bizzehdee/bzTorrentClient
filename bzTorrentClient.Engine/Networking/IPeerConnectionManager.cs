@@ -6,7 +6,7 @@ public interface IPeerConnectionManager : IDisposable
 {
     int ActiveConnectionCount { get; }
 
-    IReadOnlyCollection<IPEndPoint> ConnectedEndpoints { get; }
+    IReadOnlyCollection<PeerConnectionInfo> ConnectedPeers { get; }
 
     /// <summary>Peers learned about via Peer Exchange (BEP-11) so far (raw count, not deduped).</summary>
     int PexPeersFound { get; }

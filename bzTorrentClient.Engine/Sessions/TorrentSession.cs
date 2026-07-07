@@ -132,6 +132,24 @@ public sealed class TorrentSession
         State = IsFullyVerified ? TorrentState.Completed : TorrentState.Paused;
     }
 
+    /// <summary>
+    /// Replaces <see cref="PieceCompletion"/> with the result of hashing whatever's
+    /// already on disk against the torrent's piece hashes (see <see cref="Transfer.PieceVerifier"/>).
+    /// Only valid mid-<see cref="BeginChecking"/>/<see cref="FinishChecking"/>.
+    /// </summary>
+    public void ApplyVerificationResult(bool[] pieceCompletion)
+    {
+        if (State != TorrentState.Checking)
+            throw new InvalidOperationException($"Cannot apply verification results from state {State}.");
+
+        ArgumentNullException.ThrowIfNull(pieceCompletion);
+
+        if (pieceCompletion.Length != Metadata.PieceHashes.Count)
+            throw new ArgumentException("Verification result must cover every piece in the torrent.", nameof(pieceCompletion));
+
+        PieceCompletion = pieceCompletion;
+    }
+
     public void Fail(string reason)
     {
         LastError = reason ?? throw new ArgumentNullException(nameof(reason));

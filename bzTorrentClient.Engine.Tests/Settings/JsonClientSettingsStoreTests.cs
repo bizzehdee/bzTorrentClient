@@ -34,6 +34,8 @@ public class JsonClientSettingsStoreTests : IDisposable
             ListenPort = 12345,
             GlobalDownloadLimitBytesPerSecond = 512_000,
             GlobalUploadLimitBytesPerSecond = 128_000,
+            DefaultTrackerListUrl = "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best_ip.txt",
+            DefaultTrackerListText = "udp://tracker.example.com:1337/announce\nhttp://tracker2.example.com/announce",
         };
 
         store.Save(settings);
@@ -45,6 +47,8 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.Equal(12345, reloaded.ListenPort);
         Assert.Equal(512_000, reloaded.GlobalDownloadLimitBytesPerSecond);
         Assert.Equal(128_000, reloaded.GlobalUploadLimitBytesPerSecond);
+        Assert.Equal(settings.DefaultTrackerListUrl, reloaded.DefaultTrackerListUrl);
+        Assert.Equal(settings.DefaultTrackerListText, reloaded.DefaultTrackerListText);
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-using System.Net;
+using bzTorrentClient.Engine.Networking;
 
 namespace bzTorrentClient.Engine.Sessions;
 
@@ -12,7 +12,7 @@ public interface ITorrentRuntimeInfoProvider
 {
     int GetActiveConnectionCount(Guid sessionId);
 
-    IReadOnlyCollection<IPEndPoint> GetConnectedPeers(Guid sessionId);
+    IReadOnlyCollection<PeerConnectionInfo> GetConnectedPeers(Guid sessionId);
 
     /// <summary>Returns <see cref="TorrentNetworkStats.Empty"/> if the torrent has no active runtime (never started, or stopped).</summary>
     TorrentNetworkStats GetNetworkStats(Guid sessionId);

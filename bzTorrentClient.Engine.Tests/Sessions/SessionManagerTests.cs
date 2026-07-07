@@ -108,6 +108,26 @@ public class SessionManagerTests
     }
 
     [Fact]
+    public async Task SaveAsync_PersistsCurrentStateWithoutMutatingIt()
+    {
+        var (manager, store) = CreateManager();
+        var session = await manager.AddAsync(Source(), null, false);
+        var saveCountBeforeExplicitSave = store.SaveCount;
+
+        await manager.SaveAsync(session.Id);
+
+        Assert.Equal(TorrentState.Paused, session.State);
+        Assert.Equal(saveCountBeforeExplicitSave + 1, store.SaveCount);
+    }
+
+    [Fact]
+    public async Task SaveAsync_UnknownSession_Throws()
+    {
+        var (manager, _) = CreateManager();
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => manager.SaveAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
     public async Task InitializeAsync_LoadsPersistedSessionsFromStore()
     {
         var (manager, store) = CreateManager();

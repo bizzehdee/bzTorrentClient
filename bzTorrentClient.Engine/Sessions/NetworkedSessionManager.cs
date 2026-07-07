@@ -43,6 +43,15 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     private readonly Dictionary<Guid, TorrentRuntime> _runtimes = new();
     private readonly object _runtimesLock = new();
 
+    // A torrent's cached metadata (piece hashes) is what makes verification possible in
+    // the first place, regardless of whether it came from a .torrent file up front or a
+    // magnet/BTIH fetch resolved later — once known, disk state only needs hashing once
+    // per process run. Guarded by _runtimesLock rather than a separate lock since it's
+    // touched from exactly the same call sites.
+    private readonly HashSet<Guid> _verifiedSessionIds = new();
+
+    private readonly IDefaultTrackerListProvider _defaultTrackerListProvider;
+
     public NetworkedSessionManager(
         ISessionManager inner,
         IClientSettings settings,
@@ -50,7 +59,8 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         Func<TorrentSession, int, IPeerSource>? peerSourceFactory = null,
         Func<TorrentSession, ITorrentStorage, IPieceManager, IPeerConnectionManager>? connectionManagerFactory = null,
         TimeSpan? metadataFetchTimeout = null,
-        TimeSpan? metadataRetryDelay = null)
+        TimeSpan? metadataRetryDelay = null,
+        IDefaultTrackerListProvider? defaultTrackerListProvider = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -59,6 +69,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         _connectionManagerFactory = connectionManagerFactory ?? DefaultConnectionManagerFactory;
         _metadataFetchTimeout = metadataFetchTimeout ?? DefaultMetadataFetchTimeout;
         _metadataRetryDelay = metadataRetryDelay ?? DefaultMetadataRetryDelay;
+        _defaultTrackerListProvider = defaultTrackerListProvider ?? NullDefaultTrackerListProvider.Instance;
         _downloadLimiter = new TokenBucketRateLimiter(() => _settings.GlobalDownloadLimitBytesPerSecond);
         _uploadLimiter = new TokenBucketRateLimiter(() => _settings.GlobalUploadLimitBytesPerSecond);
     }
@@ -69,21 +80,57 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
+        // Best-effort - refreshed before any torrent's runtime is built below, so the
+        // upserted list is as current as this launch can make it, but a slow/failed fetch
+        // must not stop the rest of startup (RefreshAsync swallows its own failures).
+        await _defaultTrackerListProvider.RefreshAsync(cancellationToken);
+
         await _inner.InitializeAsync(cancellationToken);
 
-        // A torrent left Active when the app last closed should resume without the user
-        // having to click Start again — otherwise every restart silently halts transfers.
-        // One session failing to resume (bad tracker, disk error, ...) must not stop the
-        // rest from starting.
-        foreach (var session in _inner.Sessions.Where(s => s.State == TorrentState.Active).ToList())
+        var sessions = _inner.Sessions.ToList();
+
+        // A torrent left Active - or already Completed and seeding - when the app last
+        // closed should resume without the user having to click Start again: otherwise
+        // every restart silently halts transfers, and a finished torrent stops seeding
+        // the moment the app restarts even though nothing told it to stop. Snapshot which
+        // ones qualify *before* verifying: verification mutates these same TorrentSession
+        // objects' State in place, and a previously-running torrent that turns out to no
+        // longer have all its data on disk (e.g. files removed externally) ends up Paused
+        // by it, not Active, but should still resume downloading the missing pieces same
+        // as if it had never finished.
+        var previouslyRunningIds = sessions
+            .Where(s => s.State is TorrentState.Active or TorrentState.Completed)
+            .Select(s => s.Id)
+            .ToList();
+
+        // A torrent's cached metadata (its piece hashes) is what tells us what's already
+        // downloaded, regardless of whether it was added as a .torrent file, a magnet
+        // link, or a raw BTIH — the source only mattered for how that metadata was first
+        // acquired. Verifying every loaded torrent against disk here, before the list is
+        // ever shown, means downloaded/missing state is already accurate the moment it's
+        // displayed rather than only once the user hits Start. One session failing to
+        // verify (disk error, ...) must not stop the rest.
+        foreach (var session in sessions)
         {
             try
             {
-                await StartAsync(session.Id, cancellationToken);
+                await EnsureVerifiedAsync(session, cancellationToken);
             }
             catch (Exception ex)
             {
                 session.Fail(ex.Message);
+            }
+        }
+
+        foreach (var sessionId in previouslyRunningIds)
+        {
+            try
+            {
+                await StartAsync(sessionId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                sessions.First(s => s.Id == sessionId).Fail(ex.Message);
             }
         }
     }
@@ -103,9 +150,14 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
 
     public bool TryReserveConnections(int count) => _inner.TryReserveConnections(count);
     public void ReleaseConnections(int count) => _inner.ReleaseConnections(count);
+    public Task SaveAsync(Guid sessionId, CancellationToken cancellationToken = default) => _inner.SaveAsync(sessionId, cancellationToken);
 
     public async Task StartAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
+        var existingSession = _inner.Sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (existingSession is not null)
+            await EnsureVerifiedAsync(existingSession, cancellationToken);
+
         await _inner.StartAsync(sessionId, cancellationToken);
         var session = _inner.Sessions.First(s => s.Id == sessionId);
 
@@ -155,6 +207,13 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
             if (fetched)
                 break;
 
+            // Pausing doesn't tear down the runtime (that's Stop's job), so the check
+            // above alone wouldn't catch it — metadata is only ever fetched for an active
+            // torrent; a paused one should stop retrying until the user starts it again,
+            // at which point StartAsync spins up a fresh fetch loop.
+            if (session.State != TorrentState.Active)
+                return;
+
             if (!stubConnectionManagerStarted)
             {
                 // Let peers keep connecting (and exchanging PEX) between attempts, instead
@@ -171,20 +230,42 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
 
         try
         {
+            bool stillRelevant;
+            lock (_runtimesLock)
+            {
+                stillRelevant = _runtimes.TryGetValue(session.Id, out var currentRuntime) && currentRuntime == runtime;
+            }
+
+            if (!stillRelevant)
+                return;
+
+            session.OnMetadataPopulated();
+
+            // Cache the resolved metadata against the torrent's info-hash the moment it's
+            // known, same as a .torrent-file add already gets for free — from here on,
+            // what's downloaded is determined from this cached metadata regardless of how
+            // the torrent was originally added. Promote before verifying so the single
+            // save below persists metadata, completion, and state together.
+            using (var stream = new MemoryStream())
+            {
+                concreteMetadata.Save(stream);
+                session.PromoteSourceToTorrentFile(stream.ToArray());
+            }
+
+            // Piece hashes only become known once metadata is fetched, so this is the
+            // earliest a magnet torrent's on-disk data (e.g. re-adding a magnet for
+            // content already downloaded elsewhere) can be checked against them.
+            await EnsureVerifiedAsync(session, cancellationToken);
+
             lock (_runtimesLock)
             {
                 if (!_runtimes.TryGetValue(session.Id, out var currentRuntime) || currentRuntime != runtime)
                     return;
 
-                session.OnMetadataPopulated();
                 runtime.Storage.EnsureAllocated();
                 BuildPieceAndConnectionManagers(session, runtime);
                 runtime.ConnectionManager.Start();
             }
-
-            using var stream = new MemoryStream();
-            concreteMetadata.Save(stream);
-            session.PromoteSourceToTorrentFile(stream.ToArray());
         }
         catch (Exception)
         {
@@ -214,6 +295,12 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     public async Task RemoveAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         TearDownRuntime(sessionId);
+
+        lock (_runtimesLock)
+        {
+            _verifiedSessionIds.Remove(sessionId);
+        }
+
         await _inner.RemoveAsync(sessionId, cancellationToken);
     }
 
@@ -235,13 +322,13 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         }
     }
 
-    public IReadOnlyCollection<IPEndPoint> GetConnectedPeers(Guid sessionId)
+    public IReadOnlyCollection<PeerConnectionInfo> GetConnectedPeers(Guid sessionId)
     {
         lock (_runtimesLock)
         {
             return _runtimes.TryGetValue(sessionId, out var runtime)
-                ? runtime.ConnectionManager.ConnectedEndpoints
-                : Array.Empty<IPEndPoint>();
+                ? runtime.ConnectionManager.ConnectedPeers
+                : Array.Empty<PeerConnectionInfo>();
         }
     }
 
@@ -264,12 +351,74 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         }
     }
 
+    /// <summary>
+    /// Verifies a session against disk at most once per process run (tracked via
+    /// <see cref="_verifiedSessionIds"/>, keyed by session id but really standing in for
+    /// the torrent's info-hash — the actual cache key for its metadata) and persists the
+    /// result. A no-op if piece hashes aren't known yet (a magnet/BTIH add whose metadata
+    /// hasn't been fetched), or if this session was already verified this run.
+    /// </summary>
+    private async Task EnsureVerifiedAsync(TorrentSession session, CancellationToken cancellationToken)
+    {
+        if (session.Metadata.PieceHashes.Count == 0)
+            return;
+
+        lock (_runtimesLock)
+        {
+            if (_verifiedSessionIds.Contains(session.Id))
+                return;
+        }
+
+        await VerifyAgainstDiskAsync(session, cancellationToken);
+
+        lock (_runtimesLock)
+        {
+            _verifiedSessionIds.Add(session.Id);
+        }
+
+        await _inner.SaveAsync(session.Id, cancellationToken);
+    }
+
+    /// <summary>
+    /// The persisted PieceCompletion bitfield is only saved on explicit lifecycle
+    /// transitions (add/start/pause/stop), not as pieces finish during a run, so it can be
+    /// stale by the time a torrent's runtime is (re)built. Re-derive real completion by
+    /// hashing whatever's already on disk against the torrent's piece hashes (cached as
+    /// part of the session's metadata), so only pieces actually missing get fetched.
+    /// </summary>
+    private static async Task VerifyAgainstDiskAsync(TorrentSession session, CancellationToken cancellationToken)
+    {
+        // Completed counts as "running" here same as Active - a finished torrent keeps
+        // seeding until the user explicitly stops it, so if disk state has since regressed
+        // (e.g. files removed externally) it must resume downloading the missing pieces
+        // rather than just sit there having lost its Active/Completed status.
+        var wasRunning = session.State is TorrentState.Active or TorrentState.Completed;
+
+        session.Stop(); // Normalizes any prior state to Stopped, from which BeginChecking is always legal.
+        session.BeginChecking();
+
+        var storage = new FileSystemTorrentStorage(session.Metadata, session.DownloadDirectory);
+        var completion = await Task.Run(() => PieceVerifier.Verify(session.Metadata, storage), cancellationToken);
+
+        session.ApplyVerificationResult(completion);
+        session.FinishChecking();
+
+        // FinishChecking only ever lands on Paused or Completed. If this torrent was
+        // running before the check started, restore Active so it keeps going - callers
+        // (StartAsync/RunDeferredMetadataFetchAsync) don't separately re-issue Start()
+        // for a session that's already active mid-flight.
+        if (wasRunning && session.State == TorrentState.Paused)
+            session.Start();
+    }
+
     private TorrentRuntime GetOrCreateRuntime(TorrentSession session)
     {
         lock (_runtimesLock)
         {
             if (_runtimes.TryGetValue(session.Id, out var existing))
                 return existing;
+
+            ApplyDefaultTrackers(session);
 
             var storage = new FileSystemTorrentStorage(session.Metadata, session.DownloadDirectory);
             storage.EnsureAllocated();
@@ -280,6 +429,29 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
 
             _runtimes[session.Id] = runtime;
             return runtime;
+        }
+    }
+
+    /// <summary>
+    /// Upserts the configured default tracker list (URL + text box, combined) into this
+    /// torrent's own tracker list. The torrent's own trackers always take priority (this
+    /// only adds ones it doesn't already have); skipped entirely for private torrents,
+    /// which per BEP-27 must only announce to trackers named in their own metadata.
+    /// </summary>
+    private void ApplyDefaultTrackers(TorrentSession session)
+    {
+        if (session.Metadata.Private)
+            return;
+
+        var defaultTrackers = _defaultTrackerListProvider.GetTrackers();
+        if (defaultTrackers.Count == 0)
+            return;
+
+        var existing = new HashSet<string>(session.Metadata.AnnounceList, StringComparer.OrdinalIgnoreCase);
+        foreach (var tracker in defaultTrackers)
+        {
+            if (existing.Add(tracker))
+                session.Metadata.AnnounceList.Add(tracker);
         }
     }
 

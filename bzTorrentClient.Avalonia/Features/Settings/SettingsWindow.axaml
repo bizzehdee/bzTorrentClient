@@ -62,6 +62,25 @@
             </StackPanel>
         </Border>
 
+        <Border Classes="Card">
+            <StackPanel Spacing="{StaticResource SpaceMd}">
+
+                <StackPanel Spacing="{StaticResource SpaceXs}">
+                    <TextBlock Classes="Caption" Text="DEFAULT TRACKER LIST URL (AUTO-UPDATES ON LAUNCH)"/>
+                    <TextBox Text="{Binding DefaultTrackerListUrl}" PlaceholderText="https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best_ip.txt"/>
+                </StackPanel>
+
+                <StackPanel Spacing="{StaticResource SpaceXs}">
+                    <TextBlock Classes="Caption" Text="ADDITIONAL DEFAULT TRACKERS (ONE PER LINE)"/>
+                    <TextBox Text="{Binding DefaultTrackerListText}" AcceptsReturn="True" TextWrapping="Wrap" Height="80"/>
+                </StackPanel>
+
+                <TextBlock Classes="Body" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                           Text="Both lists are combined and added to every non-private torrent's own trackers. Invalid lines are ignored."/>
+
+            </StackPanel>
+        </Border>
+
         <TextBlock Classes="Body" Text="{Binding ErrorMessage}" Foreground="{DynamicResource StateErrorBrush}" TextWrapping="Wrap"
                    IsVisible="{Binding ErrorMessage, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
 

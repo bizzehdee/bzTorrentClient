@@ -1,4 +1,5 @@
 using System.Net;
+using bzTorrentClient.Engine.Networking;
 using bzTorrentClient.Engine.Sessions;
 
 namespace bzTorrentClient.Avalonia.Tests.Testing;
@@ -10,7 +11,7 @@ internal sealed class FakeSessionManager : ISessionManager, ITorrentRuntimeInfoP
 
     public List<(string Method, Guid Id)> Calls { get; } = new();
     public Dictionary<Guid, int> PeerCounts { get; } = new();
-    public Dictionary<Guid, List<IPEndPoint>> ConnectedPeers { get; } = new();
+    public Dictionary<Guid, List<PeerConnectionInfo>> ConnectedPeers { get; } = new();
     public Dictionary<Guid, TorrentNetworkStats> NetworkStats { get; } = new();
 
     /// <summary>When set, <see cref="StartAsync"/> delays this long before completing for <see cref="SlowStartSessionId"/>.</summary>
@@ -65,6 +66,12 @@ internal sealed class FakeSessionManager : ISessionManager, ITorrentRuntimeInfoP
         return Task.CompletedTask;
     }
 
+    public Task SaveAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        Calls.Add(("Save", sessionId));
+        return Task.CompletedTask;
+    }
+
     public bool TryReserveConnections(int count) => true;
 
     public void ReleaseConnections(int count)
@@ -73,8 +80,8 @@ internal sealed class FakeSessionManager : ISessionManager, ITorrentRuntimeInfoP
 
     public int GetActiveConnectionCount(Guid sessionId) => PeerCounts.GetValueOrDefault(sessionId);
 
-    public IReadOnlyCollection<IPEndPoint> GetConnectedPeers(Guid sessionId) =>
-        ConnectedPeers.TryGetValue(sessionId, out var peers) ? peers : Array.Empty<IPEndPoint>();
+    public IReadOnlyCollection<PeerConnectionInfo> GetConnectedPeers(Guid sessionId) =>
+        ConnectedPeers.TryGetValue(sessionId, out var peers) ? peers : Array.Empty<PeerConnectionInfo>();
 
     public TorrentNetworkStats GetNetworkStats(Guid sessionId) =>
         NetworkStats.TryGetValue(sessionId, out var stats) ? stats : TorrentNetworkStats.Empty;

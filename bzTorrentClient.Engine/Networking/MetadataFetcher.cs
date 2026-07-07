@@ -102,7 +102,31 @@ public static class MetadataFetcher
 
     private static bool TryFetchFromPeer(Metadata metadata, IPEndPoint endpoint, string localPeerId, CancellationToken cancellationToken)
     {
-        var connection = new PeerWireConnection<TCPSocket> { Timeout = PerPeerTimeoutSeconds, EncryptionMode = PeerEncryptionMode.PlainText };
+        var (connected, fetched) = TryFetchFromPeerOverTransport<TCPSocket>(metadata, endpoint, localPeerId, cancellationToken);
+        if (connected)
+            return fetched;
+
+        // Some peers are only reachable over uTP (BEP-29) - e.g. behind a NAT/firewall
+        // that passes outbound UDP but blocks an unsolicited inbound TCP SYN. Only worth
+        // a retry when TCP never connected at all; a peer that connected but didn't have
+        // (or wouldn't share) the metadata isn't going to behave differently over uTP.
+        (_, fetched) = TryFetchFromPeerOverTransport<UTPConnection>(metadata, endpoint, localPeerId, cancellationToken);
+        return fetched;
+    }
+
+    /// <returns>
+    /// (connected, fetched) - connected is false only when the connection itself never
+    /// came up (the case worth retrying over a different transport); fetched is only
+    /// meaningful when connected is true.
+    /// </returns>
+    private static (bool connected, bool fetched) TryFetchFromPeerOverTransport<TSocket>(
+        Metadata metadata, IPEndPoint endpoint, string localPeerId, CancellationToken cancellationToken)
+        where TSocket : ISocket, new()
+    {
+        // See PeerConnectionManager's matching comment: PlainText-only meant peers requiring
+        // MSE/PE encryption (a large share of the real swarm) never completed a handshake,
+        // so metadata never arrived even though tracker/DHT found plenty of peers.
+        var connection = new PeerWireConnection<TSocket> { Timeout = PerPeerTimeoutSeconds, EncryptionMode = PeerEncryptionMode.PreferEncryption };
         var client = new PeerWireClient(connection);
 
         var utMetadata = new UTMetadata();
@@ -116,6 +140,14 @@ public static class MetadataFetcher
         try
         {
             client.Connect(endpoint);
+        }
+        catch (Exception)
+        {
+            return (false, false);
+        }
+
+        try
+        {
             client.Handshake(metadata.HashString, localPeerId);
 
             var deadline = DateTime.UtcNow.AddSeconds(PerPeerTimeoutSeconds);
@@ -124,17 +156,37 @@ public static class MetadataFetcher
                 Thread.Sleep(10);
             }
 
-            return received.Task.IsCompletedSuccessfully && metadata.LoadInfoDictionary(received.Task.Result);
+            return (true, received.Task.IsCompletedSuccessfully && LoadFetchedMetadata(metadata, received.Task.Result));
         }
         catch (Exception)
         {
             // Any failure here just means this one candidate peer didn't pan out — the
             // caller moves on to the next candidate, so this must never fault the worker.
-            return false;
+            return (true, false);
         }
         finally
         {
             PeerWireSafety.SafeDisconnect(client);
         }
+    }
+
+    /// <summary>
+    /// <see cref="Metadata.LoadInfoDictionary"/> alone populates piece hashes/files/name
+    /// etc. but never sets the metadata's internal bencoded root document - so a later
+    /// <see cref="Metadata.Save"/> (needed to cache the fetched metadata to disk against
+    /// the torrent's info-hash) throws "No metadata to save", silently losing the fetch.
+    /// Wrapping the received info dict in a minimal root and going through the public
+    /// <see cref="Metadata.Load(Stream)"/> instead sets that root too, so Save works from
+    /// here on - same effect as loading a real .torrent file's bytes.
+    /// </summary>
+    internal static bool LoadFetchedMetadata(Metadata metadata, BDict infoDict)
+    {
+        var root = new BDict { ["info"] = infoDict };
+
+        using var stream = new MemoryStream();
+        BencodingUtils.Encode(root, stream);
+        stream.Position = 0;
+
+        return metadata.Load(stream);
     }
 }
