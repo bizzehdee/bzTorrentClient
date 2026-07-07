@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using bzTorrentClient.Avalonia.Features.AddTorrent;
 using bzTorrentClient.Avalonia.Features.RemoveTorrent;
@@ -29,10 +30,15 @@ public partial class MainWindow : Window
 
         viewModel.SettingsRequested += (_, _) =>
         {
-            var window = new SettingsWindow
+            var settingsViewModel = new SettingsViewModel(viewModel.Settings, viewModel.SettingsStore);
+            var window = new SettingsWindow { DataContext = settingsViewModel };
+
+            settingsViewModel.Saved += (_, _) =>
             {
-                DataContext = new SettingsViewModel(viewModel.Settings, viewModel.SettingsStore),
+                if (Application.Current is App app)
+                    app.ApplyTheme(viewModel.Settings);
             };
+
             _ = window.ShowDialog(this);
         };
 

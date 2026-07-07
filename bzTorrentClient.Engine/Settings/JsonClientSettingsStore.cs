@@ -40,6 +40,7 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
                 SeedUntilMinutes = dto.SeedUntilMinutes > 0 ? dto.SeedUntilMinutes : new ClientSettings().SeedUntilMinutes,
                 SeedUntilRatio = dto.SeedUntilRatio > 0 ? dto.SeedUntilRatio : new ClientSettings().SeedUntilRatio,
                 RememberedDeleteFilesOnRemove = dto.RememberedDeleteFilesOnRemove,
+                ColorTheme = Enum.TryParse<ColorTheme>(dto.ColorTheme, out var colorTheme) ? colorTheme : ColorTheme.Auto,
             };
         }
         catch (JsonException)
@@ -65,6 +66,7 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
             SeedUntilMinutes = settings.SeedUntilMinutes,
             SeedUntilRatio = settings.SeedUntilRatio,
             RememberedDeleteFilesOnRemove = settings.RememberedDeleteFilesOnRemove,
+            ColorTheme = settings.ColorTheme.ToString(),
         };
 
         var directory = Path.GetDirectoryName(_filePath);
@@ -87,5 +89,6 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
         public int SeedUntilMinutes { get; set; }
         public double SeedUntilRatio { get; set; }
         public bool? RememberedDeleteFilesOnRemove { get; set; }
+        public string? ColorTheme { get; set; }
     }
 }

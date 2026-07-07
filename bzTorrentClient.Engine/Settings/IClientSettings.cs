@@ -38,4 +38,7 @@ public interface IClientSettings
     /// when the user checks "don't ask me again" on that dialog. Null means always ask.
     /// </summary>
     bool? RememberedDeleteFilesOnRemove { get; set; }
+
+    /// <summary>Light/Dark/Auto (follow the OS). Default Auto.</summary>
+    ColorTheme ColorTheme { get; set; }
 }

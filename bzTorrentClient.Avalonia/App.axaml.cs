@@ -24,19 +24,15 @@ public partial class App : Application
         AvaloniaXamlLoader.Load(this);
     }
 
+    private IClientSettings? _settings;
+
     public override void OnFrameworkInitializationCompleted()
     {
-        // RequestedThemeVariant="Default" leaves the initial paint as Light until
-        // PlatformSettings' own system-theme subscription (an async xdg-desktop-portal
-        // notification on Linux) delivers an update, which can take seconds even though a
-        // direct Settings.Read call against the same portal answers in milliseconds (verified
-        // via dbus-send). Querying the portal directly up front avoids that flash entirely;
-        // ColorValuesChanged still keeps the theme following live system changes afterward.
-        RequestedThemeVariant = TryReadSystemThemeVariantViaPortal()
-            ?? (PlatformSettings is { } platformColorSettings ? ToThemeVariant(platformColorSettings.GetColorValues()) : ThemeVariant.Light);
-
+        // ColorValuesChanged (an async xdg-desktop-portal notification on Linux) keeps the
+        // theme following live system changes when the user's setting is Auto; ApplyTheme
+        // itself decides whether that's actually the case each time it fires.
         if (PlatformSettings is { } platformSettings)
-            platformSettings.ColorValuesChanged += (_, values) => RequestedThemeVariant = ToThemeVariant(values);
+            platformSettings.ColorValuesChanged += (_, values) => ApplyThemeFromPlatformValues(values);
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
@@ -47,6 +43,8 @@ public partial class App : Application
 
             var settingsStore = new JsonClientSettingsStore(Path.Combine(appDataDirectory, "settings.json"));
             var settings = settingsStore.Load();
+            _settings = settings;
+            ApplyTheme(settings);
 
             var dbOptions = new DbContextOptionsBuilder<BzTorrentClientDbContext>()
                 .UseSqlite($"Data Source={Path.Combine(appDataDirectory, "sessions.db")}")
@@ -83,6 +81,38 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Applies <paramref name="settings"/>.ColorTheme: Light/Dark set it directly, Auto
+    /// follows the OS the same way startup always did. Called both at launch and whenever
+    /// Settings is saved, so a theme change takes effect immediately without a restart.
+    /// </summary>
+    public void ApplyTheme(IClientSettings settings)
+    {
+        _settings = settings;
+
+        RequestedThemeVariant = settings.ColorTheme switch
+        {
+            ColorTheme.Light => ThemeVariant.Light,
+            ColorTheme.Dark => ThemeVariant.Dark,
+            // RequestedThemeVariant="Default" leaves the initial paint as Light until
+            // PlatformSettings' own system-theme subscription (an async xdg-desktop-portal
+            // notification on Linux) delivers an update, which can take seconds even though a
+            // direct Settings.Read call against the same portal answers in milliseconds
+            // (verified via dbus-send). Querying the portal directly up front avoids that
+            // flash entirely; ColorValuesChanged keeps following live system changes after.
+            _ => TryReadSystemThemeVariantViaPortal()
+                ?? (PlatformSettings is { } platformColorSettings ? ToThemeVariant(platformColorSettings.GetColorValues()) : ThemeVariant.Light),
+        };
+    }
+
+    private void ApplyThemeFromPlatformValues(PlatformColorValues values)
+    {
+        if (_settings is not { ColorTheme: ColorTheme.Auto })
+            return;
+
+        RequestedThemeVariant = ToThemeVariant(values);
     }
 
     private static ThemeVariant ToThemeVariant(PlatformColorValues colorValues) =>

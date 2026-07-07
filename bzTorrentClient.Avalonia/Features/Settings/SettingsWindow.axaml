@@ -28,6 +28,13 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
+                    <Border Classes="Card">
+                        <StackPanel Spacing="{StaticResource SpaceSm}">
+                            <TextBlock Classes="Caption" Text="COLOR THEME"/>
+                            <ComboBox ItemsSource="{Binding ColorThemes}" SelectedItem="{Binding ColorTheme}" HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </TabItem>
 

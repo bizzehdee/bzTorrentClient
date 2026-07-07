@@ -13,6 +13,7 @@ public sealed class ClientSettings : IClientSettings
     public int SeedUntilMinutes { get; set; } = 60;
     public double SeedUntilRatio { get; set; } = 1.0;
     public bool? RememberedDeleteFilesOnRemove { get; set; }
+    public ColorTheme ColorTheme { get; set; } = ColorTheme.Auto;
 
     public ClientSettings(string? defaultDownloadDirectory = null)
     {

@@ -114,4 +114,29 @@ public class SettingsViewModelTests
         Assert.NotNull(viewModel.ErrorMessage);
         Assert.Null(store.Saved);
     }
+
+    [Fact]
+    public void Constructor_DefaultsColorThemeFromSettings()
+    {
+        var settings = new ClientSettings("/downloads") { ColorTheme = ColorTheme.Dark };
+        var viewModel = new SettingsViewModel(settings, new FakeClientSettingsStore());
+
+        Assert.Equal(ColorTheme.Dark, viewModel.ColorTheme);
+    }
+
+    [Fact]
+    public void Save_ColorTheme_PersistsToSettings()
+    {
+        var settings = new ClientSettings("/downloads");
+        var store = new FakeClientSettingsStore();
+        var viewModel = new SettingsViewModel(settings, store)
+        {
+            ColorTheme = ColorTheme.Light,
+        };
+
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.Equal(ColorTheme.Light, settings.ColorTheme);
+    }
 }

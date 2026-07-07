@@ -38,6 +38,7 @@ public class JsonClientSettingsStoreTests : IDisposable
             DefaultTrackerListText = "udp://tracker.example.com:1337/announce\nhttp://tracker2.example.com/announce",
             SeedUntilMinutes = 120,
             SeedUntilRatio = 2.5,
+            ColorTheme = ColorTheme.Dark,
         };
 
         store.Save(settings);
@@ -53,6 +54,16 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.Equal(settings.DefaultTrackerListText, reloaded.DefaultTrackerListText);
         Assert.Equal(120, reloaded.SeedUntilMinutes);
         Assert.Equal(2.5, reloaded.SeedUntilRatio);
+        Assert.Equal(ColorTheme.Dark, reloaded.ColorTheme);
+    }
+
+    [Fact]
+    public void Load_MissingFile_DefaultsColorThemeToAuto()
+    {
+        var store = new JsonClientSettingsStore(_filePath);
+        var settings = store.Load();
+
+        Assert.Equal(ColorTheme.Auto, settings.ColorTheme);
     }
 
     [Fact]

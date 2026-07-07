@@ -42,7 +42,12 @@ public partial class SettingsViewModel : ViewModelBase
     private double _seedUntilRatio;
 
     [ObservableProperty]
+    private ColorTheme _colorTheme;
+
+    [ObservableProperty]
     private string? _errorMessage;
+
+    public IReadOnlyList<ColorTheme> ColorThemes { get; } = Enum.GetValues<ColorTheme>();
 
     /// <summary>Raised once settings are validated and persisted; the view closes the dialog on this.</summary>
     public event EventHandler? Saved;
@@ -64,6 +69,7 @@ public partial class SettingsViewModel : ViewModelBase
         _defaultTrackerListText = settings.DefaultTrackerListText;
         _seedUntilMinutes = settings.SeedUntilMinutes;
         _seedUntilRatio = settings.SeedUntilRatio;
+        _colorTheme = settings.ColorTheme;
 
         SaveCommand = new RelayCommand(Save);
     }
@@ -124,6 +130,7 @@ public partial class SettingsViewModel : ViewModelBase
             _settings.DefaultTrackerListText = DefaultTrackerListText;
             _settings.SeedUntilMinutes = SeedUntilMinutes;
             _settings.SeedUntilRatio = SeedUntilRatio;
+            _settings.ColorTheme = ColorTheme;
             _settingsStore.Save(_settings);
         }
         catch (Exception ex)
