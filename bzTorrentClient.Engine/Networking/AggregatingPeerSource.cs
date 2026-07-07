@@ -25,9 +25,13 @@ public sealed class AggregatingPeerSource : IPeerSource
     private readonly Func<string, ITrackerClient> _trackerClientFactory;
     private readonly Func<IDhtPeerFinder>? _dhtPeerFinderFactory;
     private readonly Func<ILanPeerFinder>? _lanPeerFinderFactory;
+    private readonly TimeSpan _trackerFailureRetryDelay;
 
     private readonly HashSet<string> _seenPeers = new();
     private readonly object _seenPeersLock = new();
+
+    /// <summary>Guards <see cref="IMetadata.AnnounceList"/> mutations - each tracker is polled from its own task, and the backing collection isn't thread-safe for concurrent removes.</summary>
+    private readonly object _announceListLock = new();
 
     private CancellationTokenSource? _cts;
     private IDhtPeerFinder? _dhtPeerFinder;
@@ -51,7 +55,8 @@ public sealed class AggregatingPeerSource : IPeerSource
         string localPeerId,
         Func<string, ITrackerClient>? trackerClientFactory = null,
         Func<IDhtPeerFinder>? dhtPeerFinderFactory = null,
-        Func<ILanPeerFinder>? lanPeerFinderFactory = null)
+        Func<ILanPeerFinder>? lanPeerFinderFactory = null,
+        TimeSpan? trackerFailureRetryDelay = null)
     {
         _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
         _listenPort = listenPort;
@@ -59,6 +64,7 @@ public sealed class AggregatingPeerSource : IPeerSource
         _trackerClientFactory = trackerClientFactory ?? DefaultTrackerClientFactory;
         _dhtPeerFinderFactory = dhtPeerFinderFactory ?? (() => new DhtPeerFinder());
         _lanPeerFinderFactory = lanPeerFinderFactory ?? (() => new LanPeerFinder());
+        _trackerFailureRetryDelay = trackerFailureRetryDelay ?? TrackerFailureRetryDelay;
     }
 
     public void Start()
@@ -212,9 +218,20 @@ public sealed class AggregatingPeerSource : IPeerSource
             {
                 consecutiveFailures++;
                 if (consecutiveFailures >= MaxConsecutiveTrackerFailures)
-                    return;
+                {
+                    // A tracker that's failed this many times in a row for this session is
+                    // dead weight - drop it from the torrent's own tracker list so it stops
+                    // cluttering the Trackers UI and isn't retried again until the torrent is
+                    // reloaded fresh (e.g. on the next app launch, from its original source).
+                    lock (_announceListLock)
+                    {
+                        _metadata.AnnounceList.Remove(tracker);
+                    }
 
-                if (!await AsyncUtil.TryDelay(TrackerFailureRetryDelay, cancellationToken))
+                    return;
+                }
+
+                if (!await AsyncUtil.TryDelay(_trackerFailureRetryDelay, cancellationToken))
                     return;
             }
         }

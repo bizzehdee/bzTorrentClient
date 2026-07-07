@@ -194,4 +194,66 @@ public class AggregatingPeerSourceTests
         Assert.True(dht.Disposed);
         Assert.True(lan.Disposed);
     }
+
+    [Fact]
+    public async Task PollTracker_FailsRepeatedly_RemovesTrackerFromAnnounceList()
+    {
+        var metadata = new FakeMetadata(1);
+        metadata.AnnounceList.Add("http://dead-tracker.example/announce");
+
+        var source = new AggregatingPeerSource(
+            metadata,
+            listenPort: 6881,
+            localPeerId: "-bz0001-000000000000",
+            trackerClientFactory: _ => new FakeTrackerClient(_ => null),
+            dhtPeerFinderFactory: () => new FakePeerFinder(),
+            lanPeerFinderFactory: () => new FakePeerFinder(),
+            trackerFailureRetryDelay: TimeSpan.FromMilliseconds(10));
+
+        source.Start();
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (metadata.AnnounceList.Count > 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+
+        source.Stop();
+
+        Assert.Empty(metadata.AnnounceList);
+    }
+
+    [Fact]
+    public async Task PollTracker_SucceedsAfterAFailure_KeepsTrackerAndResetsFailureCount()
+    {
+        var callCount = 0;
+        var succeededTwice = new SemaphoreSlim(0);
+        var trackerClient = new FakeTrackerClient(request =>
+        {
+            callCount++;
+            if (callCount == 1)
+                return null; // one failure, not enough to give up on the tracker
+
+            var info = new AnnounceInfo(Array.Empty<IPEndPoint>(), waitTime: 3600, seeders: 0, leechers: 0);
+            succeededTwice.Release();
+            return info;
+        });
+
+        var metadata = new FakeMetadata(1);
+        metadata.AnnounceList.Add("http://flaky-tracker.example/announce");
+
+        var source = new AggregatingPeerSource(
+            metadata,
+            listenPort: 6881,
+            localPeerId: "-bz0001-000000000000",
+            trackerClientFactory: _ => trackerClient,
+            dhtPeerFinderFactory: () => new FakePeerFinder(),
+            lanPeerFinderFactory: () => new FakePeerFinder(),
+            trackerFailureRetryDelay: TimeSpan.FromMilliseconds(10));
+
+        source.Start();
+        var signalled = await succeededTwice.WaitAsync(TimeSpan.FromSeconds(5));
+        source.Stop();
+
+        Assert.True(signalled);
+        Assert.Contains("http://flaky-tracker.example/announce", metadata.AnnounceList);
+    }
 }
