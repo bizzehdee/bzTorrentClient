@@ -455,6 +455,23 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
                 requestsServed++;
             }
         }
+
+        // Keep the connection open after serving all requests so the leecher's peer stays
+        // "connected" while the test inspects ActiveConnectionCount / ConnectedPeers, instead of
+        // racing an immediate socket close - which the leecher's teardown wins on a slow /
+        // thread-starved CI runner, dropping the peer before the assertions run. Drain until the
+        // client hangs up at test teardown (connectionManager.Stop() / listener.Stop()).
+        var drain = new byte[256];
+        try
+        {
+            while (await stream.ReadAsync(drain) > 0)
+            {
+            }
+        }
+        catch
+        {
+            // Client closed or the listener was stopped - nothing left to serve.
+        }
     }
 
     /// <summary>
