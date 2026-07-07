@@ -63,4 +63,13 @@ public interface IClientSettings
 
     /// <summary>The state a newly added torrent lands in by default (Paused/Started/Stopped). Default Paused.</summary>
     AddTorrentState DefaultAddTorrentState { get; set; }
+
+    /// <summary>Directory debug log files are written to.</summary>
+    string LogDirectory { get; set; }
+
+    /// <summary>A log file is rotated (a new one started) once it reaches this size. Default 100,000 bytes (100KB).</summary>
+    long LogMaxFileSizeBytes { get; set; }
+
+    /// <summary>Log files older than this many days are deleted. Default 7.</summary>
+    int LogMaxAgeDays { get; set; }
 }

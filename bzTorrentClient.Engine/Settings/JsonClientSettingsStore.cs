@@ -50,6 +50,9 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
                 EnableLpd = dto.EnableLpd ?? true,
                 EncryptionMode = Enum.TryParse<PeerEncryptionMode>(dto.EncryptionMode, out var encryptionMode) ? encryptionMode : PeerEncryptionMode.PreferEncryption,
                 DefaultAddTorrentState = Enum.TryParse<AddTorrentState>(dto.DefaultAddTorrentState, out var addTorrentState) ? addTorrentState : AddTorrentState.Paused,
+                LogDirectory = string.IsNullOrWhiteSpace(dto.LogDirectory) ? ClientSettings.GetPlatformDefaultLogDirectory() : dto.LogDirectory,
+                LogMaxFileSizeBytes = dto.LogMaxFileSizeBytes > 0 ? dto.LogMaxFileSizeBytes : new ClientSettings().LogMaxFileSizeBytes,
+                LogMaxAgeDays = dto.LogMaxAgeDays > 0 ? dto.LogMaxAgeDays : new ClientSettings().LogMaxAgeDays,
             };
         }
         catch (JsonException)
@@ -81,6 +84,9 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
             EnableLpd = settings.EnableLpd,
             EncryptionMode = settings.EncryptionMode.ToString(),
             DefaultAddTorrentState = settings.DefaultAddTorrentState.ToString(),
+            LogDirectory = settings.LogDirectory,
+            LogMaxFileSizeBytes = settings.LogMaxFileSizeBytes,
+            LogMaxAgeDays = settings.LogMaxAgeDays,
         };
 
         var directory = Path.GetDirectoryName(_filePath);
@@ -109,5 +115,8 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
         public bool? EnableLpd { get; set; }
         public string? EncryptionMode { get; set; }
         public string? DefaultAddTorrentState { get; set; }
+        public string? LogDirectory { get; set; }
+        public long LogMaxFileSizeBytes { get; set; }
+        public int LogMaxAgeDays { get; set; }
     }
 }

@@ -158,6 +158,37 @@
                 </StackPanel>
             </TabItem>
 
+            <TabItem Header="Logging">
+                <StackPanel Spacing="{StaticResource SpaceMd}" Margin="{StaticResource SpaceMdThickness}">
+                    <Border Classes="Card">
+                        <StackPanel Spacing="{StaticResource SpaceMd}">
+
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="LOG DIRECTORY"/>
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <TextBox Grid.Column="0" Text="{Binding LogDirectory}"/>
+                                    <Button Grid.Column="1" Classes="Secondary" Content="Browse…" Click="OnBrowseLogDirectoryClick"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="MAX LOG FILE SIZE (KB)"/>
+                                <NumericUpDown Value="{Binding LogMaxFileSizeKB}" Minimum="1" Maximum="1000000" Increment="10" FormatString="0"/>
+                            </StackPanel>
+
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="MAX LOG AGE (DAYS)"/>
+                                <NumericUpDown Value="{Binding LogMaxAgeDays}" Minimum="1" Maximum="3650" Increment="1" FormatString="0"/>
+                            </StackPanel>
+
+                            <TextBlock Classes="Body" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                       Text="A new log file starts once the current one reaches the size limit; files older than the age limit are deleted. Takes effect on next launch."/>
+
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </TabItem>
+
         </TabControl>
 
         <TextBlock Classes="Body" Text="{Binding ErrorMessage}" Foreground="{DynamicResource StateErrorBrush}" TextWrapping="Wrap"

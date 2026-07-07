@@ -9,6 +9,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Styling;
 using bzTorrentClient.Avalonia.Shell;
+using bzTorrentClient.Engine.Logging;
 using bzTorrentClient.Engine.Networking;
 using bzTorrentClient.Engine.Persistence;
 using bzTorrentClient.Engine.Sessions;
@@ -56,6 +57,8 @@ public partial class App : Application
                 SqliteSchemaUpgrader.EnsureColumnsExist(db);
             }
 
+            var logger = new FileDebugLogger(settings.LogDirectory, settings.LogMaxFileSizeBytes, TimeSpan.FromDays(settings.LogMaxAgeDays));
+
             var sessionStore = new EfSessionStore(dbOptions);
             var plainSessionManager = new SessionManager(sessionStore, settings);
             var defaultTrackerListProvider = new DefaultTrackerListProvider(
@@ -65,7 +68,8 @@ public partial class App : Application
                 plainSessionManager,
                 settings,
                 GenerateLocalPeerId(),
-                defaultTrackerListProvider: defaultTrackerListProvider);
+                defaultTrackerListProvider: defaultTrackerListProvider,
+                logger: logger);
             var addPipeline = new TorrentAddPipeline(sessionManager);
 
             var mainWindowViewModel = new MainWindowViewModel(sessionManager, addPipeline, settings, settingsStore);

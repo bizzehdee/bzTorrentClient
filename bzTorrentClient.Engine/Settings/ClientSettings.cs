@@ -22,14 +22,21 @@ public sealed class ClientSettings : IClientSettings
     public bool EnableLpd { get; set; } = true;
     public PeerEncryptionMode EncryptionMode { get; set; } = PeerEncryptionMode.PreferEncryption;
     public AddTorrentState DefaultAddTorrentState { get; set; } = AddTorrentState.Paused;
+    public string LogDirectory { get; set; }
+    public long LogMaxFileSizeBytes { get; set; } = 100_000;
+    public int LogMaxAgeDays { get; set; } = 7;
 
     public ClientSettings(string? defaultDownloadDirectory = null)
     {
         DefaultDownloadDirectory = string.IsNullOrWhiteSpace(defaultDownloadDirectory)
             ? GetPlatformDefaultDownloadDirectory()
             : defaultDownloadDirectory;
+        LogDirectory = GetPlatformDefaultLogDirectory();
     }
 
     public static string GetPlatformDefaultDownloadDirectory() =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+
+    public static string GetPlatformDefaultLogDirectory() =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "bzTorrentClient", "logs");
 }

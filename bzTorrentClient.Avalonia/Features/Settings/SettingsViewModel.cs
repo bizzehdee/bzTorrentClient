@@ -62,6 +62,16 @@ public partial class SettingsViewModel : ViewModelBase
     private AddTorrentState _defaultAddTorrentState;
 
     [ObservableProperty]
+    private string _logDirectory;
+
+    /// <summary>KB shown to the user; converted to/from the underlying bytes setting.</summary>
+    [ObservableProperty]
+    private int _logMaxFileSizeKB;
+
+    [ObservableProperty]
+    private int _logMaxAgeDays;
+
+    [ObservableProperty]
     private string? _errorMessage;
 
     public IReadOnlyList<ColorTheme> ColorThemes { get; } = Enum.GetValues<ColorTheme>();
@@ -94,6 +104,9 @@ public partial class SettingsViewModel : ViewModelBase
         _enableLpd = settings.EnableLpd;
         _encryptionMode = settings.EncryptionMode;
         _defaultAddTorrentState = settings.DefaultAddTorrentState;
+        _logDirectory = settings.LogDirectory;
+        _logMaxFileSizeKB = (int)(settings.LogMaxFileSizeBytes / 1024);
+        _logMaxAgeDays = settings.LogMaxAgeDays;
 
         SaveCommand = new RelayCommand(Save);
     }
@@ -142,6 +155,24 @@ public partial class SettingsViewModel : ViewModelBase
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(LogDirectory))
+        {
+            ErrorMessage = "Log directory must not be empty.";
+            return;
+        }
+
+        if (LogMaxFileSizeKB <= 0)
+        {
+            ErrorMessage = "Log max file size must be a positive number of KB.";
+            return;
+        }
+
+        if (LogMaxAgeDays <= 0)
+        {
+            ErrorMessage = "Log max age must be a positive number of days.";
+            return;
+        }
+
         try
         {
             _settings.DefaultDownloadDirectory = DefaultDownloadDirectory;
@@ -160,6 +191,9 @@ public partial class SettingsViewModel : ViewModelBase
             _settings.EnableLpd = EnableLpd;
             _settings.EncryptionMode = EncryptionMode;
             _settings.DefaultAddTorrentState = DefaultAddTorrentState;
+            _settings.LogDirectory = LogDirectory.Trim();
+            _settings.LogMaxFileSizeBytes = (long)LogMaxFileSizeKB * 1024;
+            _settings.LogMaxAgeDays = LogMaxAgeDays;
             _settingsStore.Save(_settings);
         }
         catch (Exception ex)

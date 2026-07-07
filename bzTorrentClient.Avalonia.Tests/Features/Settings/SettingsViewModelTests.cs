@@ -219,4 +219,55 @@ public class SettingsViewModelTests
         Assert.Null(viewModel.ErrorMessage);
         Assert.Equal(AddTorrentState.Started, settings.DefaultAddTorrentState);
     }
+
+    [Fact]
+    public void Constructor_DefaultsLoggingSettingsFromSettings()
+    {
+        var settings = new ClientSettings("/downloads")
+        {
+            LogDirectory = "/custom/logs",
+            LogMaxFileSizeBytes = 200 * 1024,
+            LogMaxAgeDays = 3,
+        };
+        var viewModel = new SettingsViewModel(settings, new FakeClientSettingsStore());
+
+        Assert.Equal("/custom/logs", viewModel.LogDirectory);
+        Assert.Equal(200, viewModel.LogMaxFileSizeKB);
+        Assert.Equal(3, viewModel.LogMaxAgeDays);
+    }
+
+    [Fact]
+    public void Save_LoggingSettings_PersistsAsBytesPerKB()
+    {
+        var settings = new ClientSettings("/downloads");
+        var viewModel = new SettingsViewModel(settings, new FakeClientSettingsStore())
+        {
+            LogDirectory = "/custom/logs",
+            LogMaxFileSizeKB = 500,
+            LogMaxAgeDays = 30,
+        };
+
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.Equal("/custom/logs", settings.LogDirectory);
+        Assert.Equal(500 * 1024, settings.LogMaxFileSizeBytes);
+        Assert.Equal(30, settings.LogMaxAgeDays);
+    }
+
+    [Fact]
+    public void Save_EmptyLogDirectory_SetsErrorAndDoesNotPersist()
+    {
+        var settings = new ClientSettings("/downloads");
+        var store = new FakeClientSettingsStore();
+        var viewModel = new SettingsViewModel(settings, store)
+        {
+            LogDirectory = "   ",
+        };
+
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.NotNull(viewModel.ErrorMessage);
+        Assert.Null(store.Saved);
+    }
 }

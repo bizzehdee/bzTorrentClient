@@ -1,5 +1,6 @@
 using System.Net;
 using bzTorrent.Data;
+using bzTorrentClient.Engine.Logging;
 using bzTorrentClient.Engine.Networking;
 using bzTorrentClient.Engine.Settings;
 using bzTorrentClient.Engine.Storage;
@@ -28,6 +29,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
 
     private readonly ISessionManager _inner;
     private readonly IClientSettings _settings;
+    private readonly IDebugLogger _logger;
     private readonly string _localPeerId;
     private readonly Func<TorrentSession, int, IPeerSource> _peerSourceFactory;
     private readonly Func<TorrentSession, ITorrentStorage, IPieceManager, IPeerConnectionManager> _connectionManagerFactory;
@@ -64,11 +66,13 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         TimeSpan? metadataFetchTimeout = null,
         TimeSpan? metadataRetryDelay = null,
         IDefaultTrackerListProvider? defaultTrackerListProvider = null,
-        TimeSpan? seedingPolicyCheckInterval = null)
+        TimeSpan? seedingPolicyCheckInterval = null,
+        IDebugLogger? logger = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _localPeerId = localPeerId ?? throw new ArgumentNullException(nameof(localPeerId));
+        _logger = logger ?? NullDebugLogger.Instance;
         _peerSourceFactory = peerSourceFactory ?? DefaultPeerSourceFactory;
         _connectionManagerFactory = connectionManagerFactory ?? DefaultConnectionManagerFactory;
         _metadataFetchTimeout = metadataFetchTimeout ?? DefaultMetadataFetchTimeout;
@@ -148,6 +152,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
             catch (Exception ex)
             {
                 session.Fail(ex.Message);
+                _logger.Log($"Verification failed for session {session.Id} ({session.Metadata.HashString}): {ex}");
             }
         }
 
@@ -160,6 +165,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
             catch (Exception ex)
             {
                 sessions.First(s => s.Id == sessionId).Fail(ex.Message);
+                _logger.Log($"Auto-resume failed for session {sessionId}: {ex}");
             }
         }
     }
@@ -220,9 +226,10 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
             {
                 fetched = await MetadataFetcher.TryFetchAsync(concreteMetadata, runtime.PeerSource, _localPeerId, _metadataFetchTimeout, cancellationToken);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // Best-effort background fetch — a failure here has no caller to observe it.
+                _logger.Log($"Metadata fetch attempt failed for session {session.Id}: {ex}");
             }
 
             lock (_runtimesLock)
@@ -296,9 +303,10 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
                 runtime.ConnectionManager.Start();
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // Detached background continuation — nothing left to propagate this to.
+            _logger.Log($"Post-metadata-fetch setup failed for session {session.Id}: {ex}");
         }
     }
 
@@ -389,9 +397,10 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
                 if (transferred)
                     await _inner.SaveAsync(session.Id, cancellationToken);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // Best-effort background policy tick.
+                _logger.Log($"Seeding policy check failed for session {session.Id}: {ex}");
             }
         }
     }

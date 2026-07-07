@@ -46,6 +46,9 @@ public class JsonClientSettingsStoreTests : IDisposable
             EnableLpd = false,
             EncryptionMode = PeerEncryptionMode.RequireEncryption,
             DefaultAddTorrentState = AddTorrentState.Started,
+            LogDirectory = "/custom/logs",
+            LogMaxFileSizeBytes = 250_000,
+            LogMaxAgeDays = 14,
         };
 
         store.Save(settings);
@@ -67,6 +70,9 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.False(reloaded.EnableLpd);
         Assert.Equal(PeerEncryptionMode.RequireEncryption, reloaded.EncryptionMode);
         Assert.Equal(AddTorrentState.Started, reloaded.DefaultAddTorrentState);
+        Assert.Equal("/custom/logs", reloaded.LogDirectory);
+        Assert.Equal(250_000, reloaded.LogMaxFileSizeBytes);
+        Assert.Equal(14, reloaded.LogMaxAgeDays);
     }
 
     [Fact]
@@ -85,6 +91,17 @@ public class JsonClientSettingsStoreTests : IDisposable
         var settings = store.Load();
 
         Assert.Equal(AddTorrentState.Paused, settings.DefaultAddTorrentState);
+    }
+
+    [Fact]
+    public void Load_MissingFile_DefaultsLoggingSettings()
+    {
+        var store = new JsonClientSettingsStore(_filePath);
+        var settings = store.Load();
+
+        Assert.Equal(ClientSettings.GetPlatformDefaultLogDirectory(), settings.LogDirectory);
+        Assert.Equal(100_000, settings.LogMaxFileSizeBytes);
+        Assert.Equal(7, settings.LogMaxAgeDays);
     }
 
     [Fact]

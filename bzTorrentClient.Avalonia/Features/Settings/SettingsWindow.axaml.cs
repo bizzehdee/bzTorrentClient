@@ -30,5 +30,17 @@ public partial class SettingsWindow : Window
             viewModel.DefaultDownloadDirectory = folders[0].Path.LocalPath;
     }
 
+    private async void OnBrowseLogDirectoryClick(object? sender, RoutedEventArgs e)
+    {
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Select the log directory",
+            AllowMultiple = false,
+        });
+
+        if (folders.Count > 0 && DataContext is SettingsViewModel viewModel)
+            viewModel.LogDirectory = folders[0].Path.LocalPath;
+    }
+
     private void OnCancelClick(object? sender, RoutedEventArgs e) => Close();
 }
