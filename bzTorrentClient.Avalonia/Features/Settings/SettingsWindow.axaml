@@ -4,10 +4,10 @@
         xmlns:conv="using:Avalonia.Data.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="380"
+        mc:Ignorable="d" d:DesignWidth="460" d:DesignHeight="420"
         x:Class="bzTorrentClient.Avalonia.Features.Settings.SettingsWindow"
         x:DataType="vm:SettingsViewModel"
-        Width="420" SizeToContent="Height" CanResize="False"
+        Width="460" SizeToContent="Height" CanResize="False"
         Background="{DynamicResource AppBackgroundBrush}"
         Title="Settings">
 
@@ -15,90 +15,112 @@
 
         <TextBlock Classes="Title" Text="Settings"/>
 
-        <Border Classes="Card">
-            <StackPanel Spacing="{StaticResource SpaceSm}">
-                <TextBlock Classes="Caption" Text="DOWNLOAD DIRECTORY"/>
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                    <TextBox Grid.Column="0" Text="{Binding DefaultDownloadDirectory}"/>
-                    <Button Grid.Column="1" Classes="Secondary" Content="Browse…" Click="OnBrowseDownloadDirectoryClick"/>
-                </Grid>
-            </StackPanel>
-        </Border>
+        <TabControl>
 
-        <Border Classes="Card">
-            <StackPanel Spacing="{StaticResource SpaceMd}">
-
-                <StackPanel Spacing="{StaticResource SpaceXs}">
-                    <TextBlock Classes="Caption" Text="GLOBAL MAX CONNECTIONS"/>
-                    <NumericUpDown Value="{Binding GlobalMaxConnections}" Minimum="1" Maximum="10000" Increment="1" FormatString="0"/>
+            <TabItem Header="General">
+                <StackPanel Spacing="{StaticResource SpaceMd}" Margin="{StaticResource SpaceMdThickness}">
+                    <Border Classes="Card">
+                        <StackPanel Spacing="{StaticResource SpaceSm}">
+                            <TextBlock Classes="Caption" Text="DOWNLOAD DIRECTORY"/>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <TextBox Grid.Column="0" Text="{Binding DefaultDownloadDirectory}"/>
+                                <Button Grid.Column="1" Classes="Secondary" Content="Browse…" Click="OnBrowseDownloadDirectoryClick"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
+            </TabItem>
 
-                <StackPanel Spacing="{StaticResource SpaceXs}">
-                    <TextBlock Classes="Caption" Text="MAX CONNECTIONS PER TORRENT"/>
-                    <NumericUpDown Value="{Binding MaxConnectionsPerTorrent}" Minimum="1" Maximum="1000" Increment="1" FormatString="0"/>
+            <TabItem Header="Network">
+                <StackPanel Spacing="{StaticResource SpaceMd}" Margin="{StaticResource SpaceMdThickness}">
+
+                    <Border Classes="Card">
+                        <StackPanel Spacing="{StaticResource SpaceMd}">
+
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="GLOBAL MAX CONNECTIONS"/>
+                                <NumericUpDown Value="{Binding GlobalMaxConnections}" Minimum="1" Maximum="10000" Increment="1" FormatString="0"/>
+                            </StackPanel>
+
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="MAX CONNECTIONS PER TORRENT"/>
+                                <NumericUpDown Value="{Binding MaxConnectionsPerTorrent}" Minimum="1" Maximum="1000" Increment="1" FormatString="0"/>
+                            </StackPanel>
+
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="LISTEN PORT"/>
+                                <NumericUpDown Value="{Binding ListenPort}" Minimum="1" Maximum="65535" Increment="1" FormatString="0"/>
+                            </StackPanel>
+
+                        </StackPanel>
+                    </Border>
+
+                    <Border Classes="Card">
+                        <StackPanel Spacing="{StaticResource SpaceMd}">
+
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="DOWNLOAD LIMIT (KB/S, 0 = UNLIMITED)"/>
+                                <NumericUpDown Value="{Binding DownloadLimitKBps}" Minimum="0" Maximum="1000000" Increment="10" FormatString="0"/>
+                            </StackPanel>
+
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="UPLOAD LIMIT (KB/S, 0 = UNLIMITED)"/>
+                                <NumericUpDown Value="{Binding UploadLimitKBps}" Minimum="0" Maximum="1000000" Increment="10" FormatString="0"/>
+                            </StackPanel>
+
+                        </StackPanel>
+                    </Border>
+
                 </StackPanel>
+            </TabItem>
 
-                <StackPanel Spacing="{StaticResource SpaceXs}">
-                    <TextBlock Classes="Caption" Text="LISTEN PORT"/>
-                    <NumericUpDown Value="{Binding ListenPort}" Minimum="1" Maximum="65535" Increment="1" FormatString="0"/>
+            <TabItem Header="Trackers">
+                <StackPanel Spacing="{StaticResource SpaceMd}" Margin="{StaticResource SpaceMdThickness}">
+                    <Border Classes="Card">
+                        <StackPanel Spacing="{StaticResource SpaceMd}">
+
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="DEFAULT TRACKER LIST URL (AUTO-UPDATES ON LAUNCH)"/>
+                                <TextBox Text="{Binding DefaultTrackerListUrl}" PlaceholderText="https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best_ip.txt"/>
+                            </StackPanel>
+
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="ADDITIONAL DEFAULT TRACKERS (ONE PER LINE)"/>
+                                <TextBox Text="{Binding DefaultTrackerListText}" AcceptsReturn="True" TextWrapping="Wrap" Height="80"/>
+                            </StackPanel>
+
+                            <TextBlock Classes="Body" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                       Text="Both lists are combined and added to every non-private torrent's own trackers. Invalid lines are ignored."/>
+
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
+            </TabItem>
 
-            </StackPanel>
-        </Border>
+            <TabItem Header="Seeding">
+                <StackPanel Spacing="{StaticResource SpaceMd}" Margin="{StaticResource SpaceMdThickness}">
+                    <Border Classes="Card">
+                        <StackPanel Spacing="{StaticResource SpaceMd}">
 
-        <Border Classes="Card">
-            <StackPanel Spacing="{StaticResource SpaceMd}">
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="SEED UNTIL TIME (MINUTES AFTER COMPLETION)"/>
+                                <NumericUpDown Value="{Binding SeedUntilMinutes}" Minimum="1" Maximum="100000" Increment="10" FormatString="0"/>
+                            </StackPanel>
 
-                <StackPanel Spacing="{StaticResource SpaceXs}">
-                    <TextBlock Classes="Caption" Text="DOWNLOAD LIMIT (KB/S, 0 = UNLIMITED)"/>
-                    <NumericUpDown Value="{Binding DownloadLimitKBps}" Minimum="0" Maximum="1000000" Increment="10" FormatString="0"/>
+                            <StackPanel Spacing="{StaticResource SpaceXs}">
+                                <TextBlock Classes="Caption" Text="SEED UNTIL RATIO (UPLOADED / DOWNLOADED)"/>
+                                <NumericUpDown Value="{Binding SeedUntilRatio}" Minimum="0.1" Maximum="1000" Increment="0.1" FormatString="0.0"/>
+                            </StackPanel>
+
+                            <TextBlock Classes="Body" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                       Text="Seeding stops automatically once either is reached, whichever comes first. Starting a torrent again after that seeds it until manually stopped."/>
+
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
+            </TabItem>
 
-                <StackPanel Spacing="{StaticResource SpaceXs}">
-                    <TextBlock Classes="Caption" Text="UPLOAD LIMIT (KB/S, 0 = UNLIMITED)"/>
-                    <NumericUpDown Value="{Binding UploadLimitKBps}" Minimum="0" Maximum="1000000" Increment="10" FormatString="0"/>
-                </StackPanel>
-
-            </StackPanel>
-        </Border>
-
-        <Border Classes="Card">
-            <StackPanel Spacing="{StaticResource SpaceMd}">
-
-                <StackPanel Spacing="{StaticResource SpaceXs}">
-                    <TextBlock Classes="Caption" Text="DEFAULT TRACKER LIST URL (AUTO-UPDATES ON LAUNCH)"/>
-                    <TextBox Text="{Binding DefaultTrackerListUrl}" PlaceholderText="https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best_ip.txt"/>
-                </StackPanel>
-
-                <StackPanel Spacing="{StaticResource SpaceXs}">
-                    <TextBlock Classes="Caption" Text="ADDITIONAL DEFAULT TRACKERS (ONE PER LINE)"/>
-                    <TextBox Text="{Binding DefaultTrackerListText}" AcceptsReturn="True" TextWrapping="Wrap" Height="80"/>
-                </StackPanel>
-
-                <TextBlock Classes="Body" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
-                           Text="Both lists are combined and added to every non-private torrent's own trackers. Invalid lines are ignored."/>
-
-            </StackPanel>
-        </Border>
-
-        <Border Classes="Card">
-            <StackPanel Spacing="{StaticResource SpaceMd}">
-
-                <StackPanel Spacing="{StaticResource SpaceXs}">
-                    <TextBlock Classes="Caption" Text="SEED UNTIL TIME (MINUTES AFTER COMPLETION)"/>
-                    <NumericUpDown Value="{Binding SeedUntilMinutes}" Minimum="1" Maximum="100000" Increment="10" FormatString="0"/>
-                </StackPanel>
-
-                <StackPanel Spacing="{StaticResource SpaceXs}">
-                    <TextBlock Classes="Caption" Text="SEED UNTIL RATIO (UPLOADED / DOWNLOADED)"/>
-                    <NumericUpDown Value="{Binding SeedUntilRatio}" Minimum="0.1" Maximum="1000" Increment="0.1" FormatString="0.0"/>
-                </StackPanel>
-
-                <TextBlock Classes="Body" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
-                           Text="Seeding stops automatically once either is reached, whichever comes first. Starting a torrent again after that seeds it until manually stopped."/>
-
-            </StackPanel>
-        </Border>
+        </TabControl>
 
         <TextBlock Classes="Body" Text="{Binding ErrorMessage}" Foreground="{DynamicResource StateErrorBrush}" TextWrapping="Wrap"
                    IsVisible="{Binding ErrorMessage, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
