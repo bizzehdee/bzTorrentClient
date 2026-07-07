@@ -5,6 +5,7 @@ using bzTorrent;
 using bzTorrent.Data;
 using bzTorrent.IO;
 using bzTorrent.ProtocolExtensions;
+using bzTorrentClient.Engine.Settings;
 using bzTorrentClient.Engine.Storage;
 using bzTorrentClient.Engine.Transfer;
 
@@ -38,6 +39,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
     private readonly IRateLimiter _uploadLimiter;
     private readonly bool _enablePex;
     private readonly PeerEncryptionMode _encryptionMode;
+    private readonly ProtocolMode _protocolMode;
     private readonly IIpBlocklistProvider _ipBlocklist;
 
     private readonly ConcurrentQueue<IPEndPoint> _candidates = new();
@@ -65,6 +67,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         IRateLimiter? uploadLimiter = null,
         bool enablePex = true,
         PeerEncryptionMode encryptionMode = PeerEncryptionMode.PreferEncryption,
+        ProtocolMode protocolMode = ProtocolMode.TcpAndUtp,
         IIpBlocklistProvider? ipBlocklist = null)
     {
         _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
@@ -78,6 +81,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         _uploadLimiter = uploadLimiter ?? new TokenBucketRateLimiter(() => 0);
         _enablePex = enablePex;
         _encryptionMode = encryptionMode;
+        _protocolMode = protocolMode;
         _ipBlocklist = ipBlocklist ?? NullIpBlocklistProvider.Instance;
     }
 
@@ -178,17 +182,35 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
 
     private void RunPeerConnection(int peerId, IPEndPoint endpoint, CancellationToken cancellationToken)
     {
-        // Most of the swarm is reachable over plain TCP, so try that first. A peer TCP
-        // can't even connect to (e.g. behind a NAT/firewall that passes outbound UDP but
-        // blocks unsolicited inbound TCP SYNs) gets one retry over uTP (BEP-29) before
-        // being given up on entirely.
-        if (RunPeerConnectionOverTransport<TCPSocket>(peerId, endpoint, cancellationToken))
-            return;
+        // Transport choice follows the configured ProtocolMode:
+        //  - TcpOnly:    TCP only, no uTP fallback.
+        //  - UtpOnly:    uTP only, no TCP.
+        //  - TcpAndUtp:  most of the swarm is reachable over plain TCP, so try that first; a
+        //                peer TCP can't even connect to (e.g. behind a NAT/firewall that passes
+        //                outbound UDP but blocks unsolicited inbound TCP SYNs) gets one retry
+        //                over uTP (BEP-29) before being given up on entirely.
+        switch (_protocolMode)
+        {
+            case ProtocolMode.TcpOnly:
+                if (!RunPeerConnectionOverTransport<TCPSocket>(peerId, endpoint, cancellationToken))
+                    CleanUp(peerId, endpoint);
+                return;
 
-        if (RunPeerConnectionOverTransport<UTPConnection>(peerId, endpoint, cancellationToken))
-            return;
+            case ProtocolMode.UtpOnly:
+                if (!RunPeerConnectionOverTransport<UTPConnection>(peerId, endpoint, cancellationToken))
+                    CleanUp(peerId, endpoint);
+                return;
 
-        CleanUp(peerId, endpoint);
+            default: // TcpAndUtp
+                if (RunPeerConnectionOverTransport<TCPSocket>(peerId, endpoint, cancellationToken))
+                    return;
+
+                if (RunPeerConnectionOverTransport<UTPConnection>(peerId, endpoint, cancellationToken))
+                    return;
+
+                CleanUp(peerId, endpoint);
+                return;
+        }
     }
 
     /// <returns>

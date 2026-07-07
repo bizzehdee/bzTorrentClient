@@ -197,6 +197,30 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public void Constructor_DefaultsProtocolModeFromSettings()
+    {
+        var settings = new ClientSettings("/downloads") { ProtocolMode = ProtocolMode.UtpOnly };
+        var viewModel = new SettingsViewModel(settings, new FakeClientSettingsStore());
+
+        Assert.Equal(ProtocolMode.UtpOnly, viewModel.ProtocolMode);
+    }
+
+    [Fact]
+    public void Save_ProtocolMode_PersistsToSettings()
+    {
+        var settings = new ClientSettings("/downloads");
+        var viewModel = new SettingsViewModel(settings, new FakeClientSettingsStore())
+        {
+            ProtocolMode = ProtocolMode.TcpOnly,
+        };
+
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.Equal(ProtocolMode.TcpOnly, settings.ProtocolMode);
+    }
+
+    [Fact]
     public void Constructor_DefaultsAddTorrentStateFromSettings()
     {
         var settings = new ClientSettings("/downloads") { DefaultAddTorrentState = AddTorrentState.Stopped };

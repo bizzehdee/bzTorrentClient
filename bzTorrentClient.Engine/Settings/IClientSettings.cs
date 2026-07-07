@@ -77,6 +77,12 @@ public interface IClientSettings
     /// </summary>
     PeerEncryptionMode EncryptionMode { get; set; }
 
+    /// <summary>
+    /// Which transport(s) outbound peer connections use: TcpOnly, UtpOnly, or TcpAndUtp (try
+    /// TCP first, fall back to uTP if TCP can't connect). Default TcpAndUtp.
+    /// </summary>
+    ProtocolMode ProtocolMode { get; set; }
+
     /// <summary>The state a newly added torrent lands in by default (Paused/Started/Stopped). Default Paused.</summary>
     AddTorrentState DefaultAddTorrentState { get; set; }
 

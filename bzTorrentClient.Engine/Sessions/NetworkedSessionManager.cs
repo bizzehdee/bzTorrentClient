@@ -836,6 +836,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
             _uploadLimiter,
             enablePex: _settings.EnablePex,
             encryptionMode: _settings.EncryptionMode,
+            protocolMode: _settings.ProtocolMode,
             ipBlocklist: _ipBlocklistProvider);
 
     private sealed class TorrentRuntime : IDisposable

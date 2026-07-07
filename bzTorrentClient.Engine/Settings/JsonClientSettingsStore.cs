@@ -53,6 +53,7 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
                 EnablePex = dto.EnablePex ?? true,
                 EnableLpd = dto.EnableLpd ?? true,
                 EncryptionMode = Enum.TryParse<PeerEncryptionMode>(dto.EncryptionMode, out var encryptionMode) ? encryptionMode : PeerEncryptionMode.PreferEncryption,
+                ProtocolMode = Enum.TryParse<ProtocolMode>(dto.ProtocolMode, out var protocolMode) ? protocolMode : ProtocolMode.TcpAndUtp,
                 DefaultAddTorrentState = Enum.TryParse<AddTorrentState>(dto.DefaultAddTorrentState, out var addTorrentState) ? addTorrentState : AddTorrentState.Paused,
                 CloseToTray = dto.CloseToTray ?? true,
                 LogDirectory = string.IsNullOrWhiteSpace(dto.LogDirectory) ? ClientSettings.GetPlatformDefaultLogDirectory() : dto.LogDirectory,
@@ -93,6 +94,7 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
             EnablePex = settings.EnablePex,
             EnableLpd = settings.EnableLpd,
             EncryptionMode = settings.EncryptionMode.ToString(),
+            ProtocolMode = settings.ProtocolMode.ToString(),
             DefaultAddTorrentState = settings.DefaultAddTorrentState.ToString(),
             CloseToTray = settings.CloseToTray,
             LogDirectory = settings.LogDirectory,
@@ -130,6 +132,7 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
         public bool? EnablePex { get; set; }
         public bool? EnableLpd { get; set; }
         public string? EncryptionMode { get; set; }
+        public string? ProtocolMode { get; set; }
         public string? DefaultAddTorrentState { get; set; }
         public bool? CloseToTray { get; set; }
         public string? LogDirectory { get; set; }

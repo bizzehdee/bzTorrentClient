@@ -68,6 +68,9 @@ public partial class SettingsViewModel : ViewModelBase
     private PeerEncryptionMode _encryptionMode;
 
     [ObservableProperty]
+    private ProtocolMode _protocolMode;
+
+    [ObservableProperty]
     private AddTorrentState _defaultAddTorrentState;
 
     [ObservableProperty]
@@ -94,6 +97,7 @@ public partial class SettingsViewModel : ViewModelBase
 
     public IReadOnlyList<ColorTheme> ColorThemes { get; } = Enum.GetValues<ColorTheme>();
     public IReadOnlyList<PeerEncryptionMode> EncryptionModes { get; } = Enum.GetValues<PeerEncryptionMode>();
+    public IReadOnlyList<ProtocolMode> ProtocolModes { get; } = Enum.GetValues<ProtocolMode>();
     public IReadOnlyList<AddTorrentState> AddTorrentStates { get; } = Enum.GetValues<AddTorrentState>();
 
     /// <summary>Raised once settings are validated and persisted; the view closes the dialog on this.</summary>
@@ -124,6 +128,7 @@ public partial class SettingsViewModel : ViewModelBase
         _enablePex = settings.EnablePex;
         _enableLpd = settings.EnableLpd;
         _encryptionMode = settings.EncryptionMode;
+        _protocolMode = settings.ProtocolMode;
         _defaultAddTorrentState = settings.DefaultAddTorrentState;
         _logDirectory = settings.LogDirectory;
         _logMaxFileSizeKB = (int)(settings.LogMaxFileSizeBytes / 1024);
@@ -223,6 +228,7 @@ public partial class SettingsViewModel : ViewModelBase
             _settings.EnablePex = EnablePex;
             _settings.EnableLpd = EnableLpd;
             _settings.EncryptionMode = EncryptionMode;
+            _settings.ProtocolMode = ProtocolMode;
             _settings.DefaultAddTorrentState = DefaultAddTorrentState;
             _settings.LogDirectory = LogDirectory.Trim();
             _settings.LogMaxFileSizeBytes = (long)LogMaxFileSizeKB * 1024;

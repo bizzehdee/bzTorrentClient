@@ -84,6 +84,98 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
     }
 
     [Fact(Timeout = 60000)]
+    public async Task PeerConnectionManager_TcpOnly_StillDownloadsFromSeeder()
+    {
+        // TcpOnly is the same happy path as the default, just with the uTP fallback disabled -
+        // a plain TCP seeder must still download fine.
+        var pieceData = Enumerable.Range(0, 32).Select(i => (byte)i).ToArray();
+        var pieceHash = SHA1.HashData(pieceData);
+
+        var metadata = new FakeMetadata(
+            pieceCount: 1,
+            hashHex: InfoHashHex,
+            pieceSize: pieceData.Length,
+            pieceHashes: new[] { pieceHash },
+            files: new[] { new MetadataFileInfo { Id = 0, Filename = "payload.bin", FileStartByte = 0, FileSize = pieceData.Length } });
+
+        var tcpListener = new TcpListener(IPAddress.Loopback, 0);
+        tcpListener.Start();
+        var port = ((IPEndPoint)tcpListener.LocalEndpoint).Port;
+        _ = Task.Run(() => RunRawSeederAsync(tcpListener, pieceData));
+
+        var storage = new FileSystemTorrentStorage(metadata, _leecherDir);
+        storage.EnsureAllocated();
+        var pieceManager = new RarestFirstPieceManager(metadata, storage);
+
+        using var connectionManager = new PeerConnectionManager(
+            metadata,
+            storage,
+            pieceManager,
+            LeecherPeerId,
+            maxConnectionsPerTorrent: 5,
+            tryReserveConnections: _ => true,
+            releaseConnections: _ => { },
+            protocolMode: ProtocolMode.TcpOnly);
+
+        connectionManager.Start();
+        connectionManager.AddPeerCandidate(new IPEndPoint(IPAddress.Loopback, port));
+
+        var completed = await SpinUntilAsync(() => pieceManager.IsComplete, TimeSpan.FromSeconds(10));
+
+        connectionManager.Stop();
+        tcpListener.Stop();
+
+        Assert.True(completed, "TcpOnly should still download from a plain TCP seeder.");
+    }
+
+    [Fact(Timeout = 60000)]
+    public async Task PeerConnectionManager_UtpOnly_DoesNotDownloadFromTcpOnlySeeder()
+    {
+        // UtpOnly never attempts TCP, so a seeder that only speaks TCP (its UDP port has
+        // nothing listening) is unreachable and nothing downloads. Proves the mode actually
+        // suppresses the TCP transport rather than silently falling back to it.
+        var pieceData = Enumerable.Range(0, 32).Select(i => (byte)i).ToArray();
+        var pieceHash = SHA1.HashData(pieceData);
+
+        var metadata = new FakeMetadata(
+            pieceCount: 1,
+            hashHex: InfoHashHex,
+            pieceSize: pieceData.Length,
+            pieceHashes: new[] { pieceHash },
+            files: new[] { new MetadataFileInfo { Id = 0, Filename = "payload.bin", FileStartByte = 0, FileSize = pieceData.Length } });
+
+        var tcpListener = new TcpListener(IPAddress.Loopback, 0);
+        tcpListener.Start();
+        var port = ((IPEndPoint)tcpListener.LocalEndpoint).Port;
+        _ = Task.Run(() => RunRawSeederAsync(tcpListener, pieceData));
+
+        var storage = new FileSystemTorrentStorage(metadata, _leecherDir);
+        storage.EnsureAllocated();
+        var pieceManager = new RarestFirstPieceManager(metadata, storage);
+
+        using var connectionManager = new PeerConnectionManager(
+            metadata,
+            storage,
+            pieceManager,
+            LeecherPeerId,
+            maxConnectionsPerTorrent: 5,
+            tryReserveConnections: _ => true,
+            releaseConnections: _ => { },
+            protocolMode: ProtocolMode.UtpOnly);
+
+        connectionManager.Start();
+        connectionManager.AddPeerCandidate(new IPEndPoint(IPAddress.Loopback, port));
+
+        var completed = await SpinUntilAsync(() => pieceManager.IsComplete, TimeSpan.FromSeconds(3));
+
+        connectionManager.Stop();
+        tcpListener.Stop();
+
+        Assert.False(completed, "UtpOnly must not download from a TCP-only seeder (no TCP fallback).");
+        Assert.Empty(connectionManager.ConnectedPeers);
+    }
+
+    [Fact(Timeout = 60000)]
     public async Task PeerConnectionManager_BlocklistedIp_NeverConnects()
     {
         var pieceData = Enumerable.Range(0, 32).Select(i => (byte)i).ToArray();

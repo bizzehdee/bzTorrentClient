@@ -48,6 +48,7 @@ public class JsonClientSettingsStoreTests : IDisposable
             EnableLpd = false,
             CloseToTray = false,
             EncryptionMode = PeerEncryptionMode.RequireEncryption,
+            ProtocolMode = ProtocolMode.UtpOnly,
             DefaultAddTorrentState = AddTorrentState.Started,
             LogDirectory = "/custom/logs",
             LogMaxFileSizeBytes = 250_000,
@@ -78,6 +79,7 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.False(reloaded.EnableLpd);
         Assert.False(reloaded.CloseToTray);
         Assert.Equal(PeerEncryptionMode.RequireEncryption, reloaded.EncryptionMode);
+        Assert.Equal(ProtocolMode.UtpOnly, reloaded.ProtocolMode);
         Assert.Equal(AddTorrentState.Started, reloaded.DefaultAddTorrentState);
         Assert.Equal("/custom/logs", reloaded.LogDirectory);
         Assert.Equal(250_000, reloaded.LogMaxFileSizeBytes);
@@ -94,6 +96,15 @@ public class JsonClientSettingsStoreTests : IDisposable
         var settings = store.Load();
 
         Assert.Equal(PeerEncryptionMode.PreferEncryption, settings.EncryptionMode);
+    }
+
+    [Fact]
+    public void Load_MissingFile_DefaultsProtocolModeToTcpAndUtp()
+    {
+        var store = new JsonClientSettingsStore(_filePath);
+        var settings = store.Load();
+
+        Assert.Equal(ProtocolMode.TcpAndUtp, settings.ProtocolMode);
     }
 
     [Fact]

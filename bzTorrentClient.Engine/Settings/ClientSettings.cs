@@ -23,6 +23,7 @@ public sealed class ClientSettings : IClientSettings
     public bool EnablePex { get; set; } = true;
     public bool EnableLpd { get; set; } = true;
     public PeerEncryptionMode EncryptionMode { get; set; } = PeerEncryptionMode.PreferEncryption;
+    public ProtocolMode ProtocolMode { get; set; } = ProtocolMode.TcpAndUtp;
     public AddTorrentState DefaultAddTorrentState { get; set; } = AddTorrentState.Paused;
     public bool CloseToTray { get; set; } = true;
     public string LogDirectory { get; set; }
