@@ -1,3 +1,4 @@
+using bzTorrent.Data;
 using bzTorrentClient.Avalonia.ViewModels;
 using bzTorrentClient.Engine.Sessions;
 using bzTorrentClient.Engine.Settings;
@@ -10,17 +11,9 @@ public partial class AddTorrentViewModel : ViewModelBase
 {
     private readonly TorrentAddPipeline _addPipeline;
 
+    /// <summary>A single field the user pastes a .torrent file path, magnet link, or bare info-hash into - which kind it is gets auto-detected on submit rather than asked for up front.</summary>
     [ObservableProperty]
-    private AddTorrentMode _mode = AddTorrentMode.File;
-
-    [ObservableProperty]
-    private string _torrentFilePath = string.Empty;
-
-    [ObservableProperty]
-    private string _magnetUri = string.Empty;
-
-    [ObservableProperty]
-    private string _infoHash = string.Empty;
+    private string _input = string.Empty;
 
     [ObservableProperty]
     private string _downloadDirectory;
@@ -46,9 +39,6 @@ public partial class AddTorrentViewModel : ViewModelBase
         AddCommand = new AsyncRelayCommand(AddAsync);
     }
 
-    [RelayCommand]
-    private void SetMode(AddTorrentMode mode) => Mode = mode;
-
     private async Task AddAsync()
     {
         ErrorMessage = null;
@@ -56,18 +46,16 @@ public partial class AddTorrentViewModel : ViewModelBase
         try
         {
             var startImmediately = !StartPaused;
-            switch (Mode)
-            {
-                case AddTorrentMode.File:
-                    await _addPipeline.AddFromFileAsync(TorrentFilePath, DownloadDirectory, startImmediately);
-                    break;
-                case AddTorrentMode.Magnet:
-                    await _addPipeline.AddFromMagnetAsync(MagnetUri, DownloadDirectory, startImmediately);
-                    break;
-                case AddTorrentMode.InfoHash:
-                    await _addPipeline.AddFromInfoHashAsync(InfoHash, DownloadDirectory, startImmediately);
-                    break;
-            }
+            var input = Input.Trim();
+
+            if (MagnetLink.IsMagnetLink(input))
+                await _addPipeline.AddFromMagnetAsync(input, DownloadDirectory, startImmediately);
+            else if (IsInfoHash(input))
+                await _addPipeline.AddFromInfoHashAsync(input, DownloadDirectory, startImmediately);
+            else if (File.Exists(input))
+                await _addPipeline.AddFromFileAsync(input, DownloadDirectory, startImmediately);
+            else
+                throw new ArgumentException("Enter a .torrent file path, a magnet link, or a 40-character info-hash.");
 
             Completed?.Invoke(this, EventArgs.Empty);
         }
@@ -79,4 +67,7 @@ public partial class AddTorrentViewModel : ViewModelBase
             ErrorMessage = ex.Message;
         }
     }
+
+    private static bool IsInfoHash(string value) =>
+        value.Length == 40 && value.All(Uri.IsHexDigit);
 }

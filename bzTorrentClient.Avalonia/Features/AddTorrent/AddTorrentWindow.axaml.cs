@@ -28,7 +28,7 @@ public partial class AddTorrentWindow : Window
         });
 
         if (files.Count > 0 && DataContext is AddTorrentViewModel viewModel)
-            viewModel.TorrentFilePath = files[0].Path.LocalPath;
+            viewModel.Input = files[0].Path.LocalPath;
     }
 
     private async void OnBrowseDownloadDirectoryClick(object? sender, RoutedEventArgs e)
