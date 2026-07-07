@@ -15,8 +15,20 @@ public class NetworkedSessionManagerTests : IDisposable
 {
     private readonly string _tempDir = Path.Combine(Path.GetTempPath(), $"bztorrentclient-networked-{Guid.NewGuid():N}");
 
+    // Every manager CreateManager hands out, so Dispose can tear them all down at the end of
+    // each test. A magnet StartAsync spins up a detached metadata-fetch retry loop that runs
+    // until the manager is disposed (or the torrent stopped/removed); a test that leaves one
+    // running leaks a loop which re-spawns 10 blocking worker tasks every retry interval,
+    // starving the thread pool for later tests. On low-core Linux CI that starvation is
+    // enough to push another test's fetch continuation past its polling deadline - which is
+    // why those failures showed up on Linux but not Windows.
+    private readonly List<NetworkedSessionManager> _managers = new();
+
     public void Dispose()
     {
+        foreach (var manager in _managers)
+            manager.Dispose();
+
         if (Directory.Exists(_tempDir))
             Directory.Delete(_tempDir, recursive: true);
     }
@@ -65,6 +77,7 @@ public class NetworkedSessionManagerTests : IDisposable
             defaultTrackerListProvider: defaultTrackerListProvider,
             seedingPolicyCheckInterval: seedingPolicyCheckInterval);
 
+        _managers.Add(manager);
         return (manager, peerSources, connectionManagers, pieceManagers);
     }
 

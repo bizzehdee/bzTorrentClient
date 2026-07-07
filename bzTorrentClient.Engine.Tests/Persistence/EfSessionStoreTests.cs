@@ -13,8 +13,13 @@ public class EfSessionStoreTests : IDisposable
     public EfSessionStoreTests()
     {
         _dbPath = Path.Combine(Path.GetTempPath(), $"bztorrentclient-tests-{Guid.NewGuid():N}.db");
+        // Pooling=False so disposing a DbContext's connection actually releases the file
+        // handle rather than parking it in Microsoft.Data.Sqlite's connection pool. On
+        // Windows a pooled (still-open) handle makes File.Delete in Dispose fail with
+        // "being used by another process"; Linux allows unlinking an open file, which is
+        // why this only surfaced on Windows.
         var options = new DbContextOptionsBuilder<BzTorrentClientDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         using (var db = new BzTorrentClientDbContext(options))
