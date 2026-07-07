@@ -73,7 +73,12 @@ public class NetworkedSessionManagerTests : IDisposable
                 return fake;
             },
             metadataFetchTimeout: TimeSpan.FromMilliseconds(100),
-            metadataRetryDelay: metadataRetryDelay ?? TimeSpan.FromMilliseconds(100),
+            // Long default so a magnet test that starts a session and doesn't explicitly test
+            // retry behaviour leaves its background fetch loop idle (one attempt, then a long
+            // sleep) rather than hammering every ~200ms until the class disposes it - dozens of
+            // such loops running at once starve the thread pool on a low-core CI and stall the
+            // run. Tests that actually exercise retries pass their own short delay.
+            metadataRetryDelay: metadataRetryDelay ?? TimeSpan.FromSeconds(30),
             defaultTrackerListProvider: defaultTrackerListProvider,
             seedingPolicyCheckInterval: seedingPolicyCheckInterval);
 
@@ -81,8 +86,30 @@ public class NetworkedSessionManagerTests : IDisposable
         return (manager, peerSources, connectionManagers, pieceManagers);
     }
 
+    // A small real .torrent, built once. These session/networking behaviour tests only need a
+    // valid torrent-file source with piece hashes - using the multi-GB Ubuntu test torrent made
+    // every StartAsync allocate and hash-verify ~5 GB against disk, which crawls on a slower CI
+    // disk (and can look like a hang). A tiny payload verifies instantly.
+    private static readonly Lazy<byte[]> SmallTorrentFileBytes = new(() =>
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"bztorrentclient-testtorrent-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var sourceFile = Path.Combine(dir, "content.bin");
+            File.WriteAllBytes(sourceFile, Enumerable.Range(0, 256).Select(b => (byte)b).ToArray());
+            using var torrentBytes = new MemoryStream();
+            Metadata.CreateFromPath(sourceFile).Save(torrentBytes);
+            return torrentBytes.ToArray();
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    });
+
     private static TorrentAddSource.TorrentFile RealTorrentFileSource() =>
-        new(File.ReadAllBytes(Path.Combine("TestFiles", "UbuntuTestTorrent.torrent")));
+        new(SmallTorrentFileBytes.Value);
 
     private static TorrentAddSource.Magnet MagnetOnlySource(string hashHex = "0123456789abcdef0123456789abcdef01234567") =>
         TorrentAddSource.Magnet.FromInfoHash(hashHex);
