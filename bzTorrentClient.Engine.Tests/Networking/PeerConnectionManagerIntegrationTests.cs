@@ -186,6 +186,59 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task PeerConnectionManager_HandshakeNotYetComplete_PeerIsNotInConnectedPeers()
+    {
+        // Regression test: a peer used to appear in ConnectedPeers (and therefore the UI's
+        // Peers tab) the instant the transport-level Connect() call returned - for uTP in
+        // particular that happens as soon as the SYN is sent, well before the connection is
+        // actually established, so peers showed up long before (and sometimes without ever)
+        // completing a real handshake, with no activity to show for it. Now a peer must
+        // complete the BitTorrent handshake before it's considered "connected" for display.
+        var metadata = new FakeMetadata(
+            pieceCount: 1,
+            hashHex: InfoHashHex,
+            pieceSize: 32,
+            pieceHashes: new[] { new byte[20] },
+            files: new[] { new MetadataFileInfo { Id = 0, Filename = "payload.bin", FileStartByte = 0, FileSize = 32 } });
+
+        var tcpListener = new TcpListener(IPAddress.Loopback, 0);
+        tcpListener.Start();
+        var port = ((IPEndPoint)tcpListener.LocalEndpoint).Port;
+        using var releaseHandshake = new ManualResetEventSlim(false);
+        var seederTask = Task.Run(() => RunHandshakeStallingSeederAsync(tcpListener, releaseHandshake));
+
+        var storage = new FileSystemTorrentStorage(metadata, _leecherDir);
+        storage.EnsureAllocated();
+        var pieceManager = new RarestFirstPieceManager(metadata, storage);
+
+        using var connectionManager = new PeerConnectionManager(
+            metadata,
+            storage,
+            pieceManager,
+            LeecherPeerId,
+            maxConnectionsPerTorrent: 5,
+            tryReserveConnections: _ => true,
+            releaseConnections: _ => { });
+
+        connectionManager.Start();
+        connectionManager.AddPeerCandidate(new IPEndPoint(IPAddress.Loopback, port));
+
+        // Give the TCP connect itself plenty of time to complete while the seeder is still
+        // deliberately withholding its handshake reply.
+        await Task.Delay(500);
+        Assert.Empty(connectionManager.ConnectedPeers);
+
+        releaseHandshake.Set();
+        var appeared = await SpinUntilAsync(() => connectionManager.ConnectedPeers.Count > 0, TimeSpan.FromSeconds(5));
+
+        connectionManager.Stop();
+        tcpListener.Stop();
+        await seederTask;
+
+        Assert.True(appeared, "Expected the peer to appear in ConnectedPeers once the handshake actually completed.");
+    }
+
+    [Fact]
     public async Task PeerConnectionManager_PeerDisconnectsThenReAdded_IsAllowedToReconnect()
     {
         var metadata = new FakeMetadata(
@@ -351,6 +404,57 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
                 requestsServed++;
             }
         }
+    }
+
+    /// <summary>
+    /// Plaintext-only, like <see cref="RunRawSeederAsync(TcpListener, byte[], int)"/> (any
+    /// connection that doesn't open with a plaintext BT handshake is closed, so the client's
+    /// PreferEncryption fallback gets a prompt "connection closed" and retries plaintext over
+    /// a fresh connection) - but once a plaintext handshake connection is found, withholds its
+    /// own handshake reply until <paramref name="releaseHandshake"/> is set.
+    /// </summary>
+    private static async Task RunHandshakeStallingSeederAsync(TcpListener listener, ManualResetEventSlim releaseHandshake)
+    {
+        TcpClient client;
+        NetworkStream stream;
+        var incomingHandshake = new byte[68];
+
+        while (true)
+        {
+            var candidate = await listener.AcceptTcpClientAsync();
+            var candidateStream = candidate.GetStream();
+
+            if (!await TryReadExactAsync(candidateStream, incomingHandshake.AsMemory(0, 1)))
+            {
+                candidate.Dispose();
+                continue;
+            }
+
+            if (incomingHandshake[0] != 19)
+            {
+                candidate.Dispose();
+                continue;
+            }
+
+            await ReadExactAsync(candidateStream, incomingHandshake.AsMemory(1, 67));
+            client = candidate;
+            stream = candidateStream;
+            break;
+        }
+
+        using var __ = client;
+        using var _ = stream;
+
+        await Task.Run(() => releaseHandshake.Wait(TimeSpan.FromSeconds(10)));
+
+        var infoHash = new byte[20];
+        Array.Copy(incomingHandshake, 28, infoHash, 0, 20);
+        await stream.WriteAsync(BuildHandshake(infoHash, "-bz0001-seeder000000"));
+        await stream.WriteAsync(BuildMessage(5, new byte[] { 0x80 })); // bitfield: piece 0 set
+
+        // Keep the connection open past the handshake so the leecher doesn't just see a
+        // dropped connection right after completing it.
+        await Task.Delay(2000);
     }
 
     private static byte[] BuildHandshake(byte[] infoHash, string peerId)

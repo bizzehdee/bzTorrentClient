@@ -209,6 +209,15 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
 
         client.HandshakeComplete += pwc =>
         {
+            // Only now does this peer count as "connected" for ConnectedPeers/the UI's Peers
+            // tab - Connect() returning doesn't mean much for uTP in particular (it returns as
+            // soon as the SYN is sent, well before the peer's ST_STATE reply actually
+            // establishes the transport), so a peer used to appear in the list - with no
+            // activity ever following - the moment Connect() returned, not once a connection
+            // to it had actually been proven to work end-to-end.
+            _activeEndpoints[peerId] = endpoint;
+            _peerByteCounters.GetOrAdd(peerId, _ => new PeerByteCounters()).Transport = transport;
+
             SendOurBitfield(pwc);
             pwc.SendInterested();
         };
@@ -291,8 +300,6 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         try
         {
             client.Connect(endpoint);
-            _activeEndpoints[peerId] = endpoint;
-            _peerByteCounters.GetOrAdd(peerId, _ => new PeerByteCounters()).Transport = transport;
         }
         catch (Exception ex) when (ex is SocketException or IOException)
         {
