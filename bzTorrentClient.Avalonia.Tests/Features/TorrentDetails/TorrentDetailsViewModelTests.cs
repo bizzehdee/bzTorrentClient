@@ -64,6 +64,45 @@ public class TorrentDetailsViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task ShowSession_ValidSession_PopulatesInfoTabFields()
+    {
+        var sessionManager = new FakeSessionManager();
+        var session = await sessionManager.AddAsync(Source(), "/downloads", false);
+        var viewModel = new TorrentDetailsViewModel(sessionManager);
+
+        viewModel.ShowSession(session.Id);
+
+        Assert.Equal(ByteFormat.Bytes(0), viewModel.TotalSizeText);
+        Assert.Equal("No", viewModel.IsPrivateText);
+        Assert.Equal("—", viewModel.Comment);
+        Assert.Equal("—", viewModel.PieceInfoText);
+        Assert.Equal("—", viewModel.CreatedByText);
+        Assert.Equal("—", viewModel.CreatedOnText);
+        Assert.NotEmpty(viewModel.DateAddedText);
+    }
+
+    [Fact]
+    public async Task ShowSession_TorrentFileWithMetadata_PopulatesInfoTabFromMetadata()
+    {
+        var sourceFile = Path.Combine(_tempDir, "content.bin");
+        await File.WriteAllBytesAsync(sourceFile, Enumerable.Range(0, 16 * 3).Select(b => (byte)b).ToArray());
+        var builtMetadata = Metadata.CreateFromPath(sourceFile, pieceSize: 16, comment: "test comment", isPrivate: true);
+        using var torrentBytes = new MemoryStream();
+        builtMetadata.Save(torrentBytes);
+
+        var sessionManager = new FakeSessionManager();
+        var session = await sessionManager.AddAsync(new TorrentAddSource.TorrentFile(torrentBytes.ToArray()), _tempDir, false);
+        var viewModel = new TorrentDetailsViewModel(sessionManager);
+
+        viewModel.ShowSession(session.Id);
+
+        Assert.Equal(ByteFormat.Bytes(48), viewModel.TotalSizeText);
+        Assert.Equal("Yes", viewModel.IsPrivateText);
+        Assert.Equal("test comment", viewModel.Comment);
+        Assert.Equal($"3 pieces × {ByteFormat.Bytes(16)}", viewModel.PieceInfoText);
+    }
+
+    [Fact]
     public async Task ShowSession_PopulatesPeersFromRuntimeInfoProvider()
     {
         var sessionManager = new FakeSessionManager();

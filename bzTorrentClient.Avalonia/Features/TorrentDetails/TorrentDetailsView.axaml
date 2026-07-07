@@ -110,6 +110,32 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
                 </TabItem>
+                <TabItem Header="Info">
+                    <StackPanel Spacing="10" Margin="0,4">
+                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="8" ColumnSpacing="12">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Classes="Caption" Text="TOTAL SIZE"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Classes="Body" Text="{Binding TotalSizeText}"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Classes="Caption" Text="DATE ADDED"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Classes="Body" Text="{Binding DateAddedText}"/>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Classes="Caption" Text="PRIVATE"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Classes="Body" Text="{Binding IsPrivateText}"/>
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Classes="Caption" Text="PIECES"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Classes="Body" Text="{Binding PieceInfoText}"/>
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Classes="Caption" Text="CREATED BY"/>
+                            <TextBlock Grid.Row="4" Grid.Column="1" Classes="Body" Text="{Binding CreatedByText}"/>
+
+                            <TextBlock Grid.Row="5" Grid.Column="0" Classes="Caption" Text="CREATED ON"/>
+                            <TextBlock Grid.Row="5" Grid.Column="1" Classes="Body" Text="{Binding CreatedOnText}"/>
+
+                            <TextBlock Grid.Row="6" Grid.Column="0" Classes="Caption" Text="COMMENT" VerticalAlignment="Top"/>
+                            <TextBlock Grid.Row="6" Grid.Column="1" Classes="Body" Text="{Binding Comment}" TextWrapping="Wrap"/>
+                        </Grid>
+                    </StackPanel>
+                </TabItem>
             </TabControl>
         </DockPanel>
     </Grid>

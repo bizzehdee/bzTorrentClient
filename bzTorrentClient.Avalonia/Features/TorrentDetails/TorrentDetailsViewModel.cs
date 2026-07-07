@@ -31,6 +31,27 @@ public partial class TorrentDetailsViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isFetchingMetadata;
 
+    [ObservableProperty]
+    private string _totalSizeText = string.Empty;
+
+    [ObservableProperty]
+    private string _dateAddedText = string.Empty;
+
+    [ObservableProperty]
+    private string _isPrivateText = string.Empty;
+
+    [ObservableProperty]
+    private string _comment = string.Empty;
+
+    [ObservableProperty]
+    private string _pieceInfoText = string.Empty;
+
+    [ObservableProperty]
+    private string _createdByText = string.Empty;
+
+    [ObservableProperty]
+    private string _createdOnText = string.Empty;
+
     public ObservableCollection<PeerRowViewModel> Peers { get; } = new();
     public ObservableCollection<FileRowViewModel> Files { get; } = new();
     public ObservableCollection<string> Trackers { get; } = new();
@@ -65,6 +86,19 @@ public partial class TorrentDetailsViewModel : ViewModelBase
 
         ReplaceAll(Trackers, session.Metadata.AnnounceList);
         ReplaceAll(Files, BuildFileRows(session));
+
+        var totalSize = session.Metadata.GetFileInfos().Sum(f => f.FileSize);
+        TotalSizeText = ByteFormat.Bytes(totalSize);
+        DateAddedText = session.AddedAtUtc.ToLocalTime().ToString("g");
+        IsPrivateText = session.Metadata.Private ? "Yes" : "No";
+        Comment = string.IsNullOrWhiteSpace(session.Metadata.Comment) ? "—" : session.Metadata.Comment;
+        PieceInfoText = session.Metadata.PieceHashes.Count == 0
+            ? "—"
+            : $"{session.Metadata.PieceHashes.Count} pieces × {ByteFormat.Bytes(session.Metadata.PieceSize)}";
+        CreatedByText = string.IsNullOrWhiteSpace(session.Metadata.CreatedBy) ? "—" : session.Metadata.CreatedBy;
+        CreatedOnText = session.Metadata.CreationDate == default
+            ? "—"
+            : session.Metadata.CreationDate.ToLocalTime().ToString("g");
 
         UpdatePeers(session.Id);
 
@@ -107,6 +141,13 @@ public partial class TorrentDetailsViewModel : ViewModelBase
         Name = string.Empty;
         InfoHash = string.Empty;
         DownloadDirectory = string.Empty;
+        TotalSizeText = string.Empty;
+        DateAddedText = string.Empty;
+        IsPrivateText = string.Empty;
+        Comment = string.Empty;
+        PieceInfoText = string.Empty;
+        CreatedByText = string.Empty;
+        CreatedOnText = string.Empty;
         Trackers.Clear();
         Files.Clear();
         Peers.Clear();
