@@ -133,6 +133,31 @@ public class AggregatingPeerSourceTests
     }
 
     [Fact]
+    public void NotePeer_SurfacesPeerThroughPeerFound_AndDedupes()
+    {
+        // PEX-discovered peers (reported by the connection manager) are fed in via NotePeer;
+        // they must reach PeerFound subscribers (the metadata fetcher) exactly once each.
+        var metadata = new FakeMetadata(1);
+        var source = new AggregatingPeerSource(
+            metadata,
+            listenPort: 6881,
+            localPeerId: "-bz0001-000000000000",
+            trackerClientFactory: _ => new FakeTrackerClient(_ => null),
+            dhtPeerFinderFactory: () => new FakePeerFinder(),
+            lanPeerFinderFactory: () => new FakePeerFinder());
+
+        var found = new List<IPEndPoint>();
+        source.PeerFound += found.Add;
+
+        var peer = new IPEndPoint(IPAddress.Parse("10.0.0.5"), 6881);
+        source.NotePeer(peer);
+        source.NotePeer(peer); // duplicate must not surface again
+
+        Assert.Single(found);
+        Assert.Equal(peer, found[0]);
+    }
+
+    [Fact]
     public void Start_NonPrivateTorrent_StartsDhtSearchAndLanAnnounce()
     {
         var dht = new FakePeerFinder();

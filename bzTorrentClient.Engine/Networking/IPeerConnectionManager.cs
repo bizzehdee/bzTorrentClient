@@ -21,6 +21,13 @@ public interface IPeerConnectionManager : IDisposable
     void AddPeerCandidate(IPEndPoint endpoint);
 
     /// <summary>
+    /// Raised when a peer is learned about from a connected peer via PEX (BEP-11). Lets the
+    /// owner feed those peers back into the shared peer source so other consumers - notably
+    /// the metadata fetcher - benefit from the swarm PEX uncovers, not just tracker/DHT/LAN.
+    /// </summary>
+    event Action<IPEndPoint>? PeerDiscovered;
+
+    /// <summary>
     /// Adopts an inbound peer connection whose handshake has already been read (so the
     /// listener could route it to this torrent). Sends our handshake and then serves/leeches
     /// over the shared peer loop. Runs inline until the connection ends.

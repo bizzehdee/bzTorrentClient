@@ -2,6 +2,7 @@ using System.Net;
 using bzTorrent.Data;
 using bzTorrentClient.Engine.Logging;
 using bzTorrentClient.Engine.Networking;
+using bzTorrentClient.Engine.Persistence;
 using bzTorrentClient.Engine.Settings;
 using bzTorrentClient.Engine.Storage;
 using bzTorrentClient.Engine.Transfer;
@@ -54,6 +55,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
 
     private readonly IDefaultTrackerListProvider _defaultTrackerListProvider;
     private readonly IIpBlocklistProvider _ipBlocklistProvider;
+    private readonly IPeerCacheStore? _peerCacheStore;
 
     private static readonly TimeSpan DefaultSeedingPolicyCheckInterval = TimeSpan.FromSeconds(5);
     private readonly Timer _seedingPolicyTimer;
@@ -76,7 +78,8 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         TimeSpan? seedingPolicyCheckInterval = null,
         IDebugLogger? logger = null,
         IIpBlocklistProvider? ipBlocklistProvider = null,
-        bool enableInboundListener = false)
+        bool enableInboundListener = false,
+        IPeerCacheStore? peerCacheStore = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -88,6 +91,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         _metadataRetryDelay = metadataRetryDelay ?? DefaultMetadataRetryDelay;
         _defaultTrackerListProvider = defaultTrackerListProvider ?? NullDefaultTrackerListProvider.Instance;
         _ipBlocklistProvider = ipBlocklistProvider ?? NullIpBlocklistProvider.Instance;
+        _peerCacheStore = peerCacheStore;
         _downloadLimiter = new TokenBucketRateLimiter(() => _settings.GlobalDownloadLimitBytesPerSecond);
         _uploadLimiter = new TokenBucketRateLimiter(() => _settings.GlobalUploadLimitBytesPerSecond);
 
@@ -287,9 +291,16 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
 
     private async Task RunDeferredMetadataFetchAsync(TorrentSession session, TorrentRuntime runtime, Metadata concreteMetadata, CancellationToken cancellationToken)
     {
-        var fetched = false;
-        var stubConnectionManagerStarted = false;
+        // Start connecting to peers immediately, in parallel with the metadata fetch, rather
+        // than waiting for the first fetch attempt to give up. The connection manager runs
+        // against the 0-piece stub - it can't request pieces yet, but it establishes peer
+        // connections and exchanges PEX, and those PEX-discovered peers are fed back into the
+        // shared peer source (see BuildPieceAndConnectionManagers), growing the very candidate
+        // pool the fetcher pulls from. This is the difference between metadata arriving in
+        // seconds versus only after a swarm slowly builds up over multiple 90s attempts.
+        runtime.ConnectionManager.Start();
 
+        var fetched = false;
         while (!fetched)
         {
             try
@@ -319,16 +330,6 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
             // at which point StartAsync spins up a fresh fetch loop.
             if (session.State != TorrentState.Active)
                 return;
-
-            if (!stubConnectionManagerStarted)
-            {
-                // Let peers keep connecting (and exchanging PEX) between attempts, instead
-                // of leaving the swarm frozen at whatever the first attempt saw — this is
-                // exactly how a torrent ends up with dozens of connected peers but no
-                // metadata forever without a retry loop.
-                runtime.ConnectionManager.Start();
-                stubConnectionManagerStarted = true;
-            }
 
             if (!await AsyncUtil.TryDelay(_metadataRetryDelay, cancellationToken))
                 return;
@@ -384,6 +385,10 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     {
         await _inner.PauseAsync(sessionId, cancellationToken);
 
+        // Snapshot the swarm before Pause() drops the connections, so a later resume can
+        // reconnect straight to them.
+        PersistConnectedPeers(sessionId);
+
         TorrentRuntime? runtime;
         lock (_runtimesLock)
         {
@@ -396,6 +401,10 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     public async Task StopAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         await _inner.StopAsync(sessionId, cancellationToken);
+
+        // Snapshot the swarm before the runtime (and its live connections) is torn down.
+        PersistConnectedPeers(sessionId);
+
         TearDownRuntime(sessionId);
     }
 
@@ -415,6 +424,20 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     {
         _seedingPolicyTimer.Dispose();
         _inboundListener?.Dispose();
+
+        // Snapshot every running torrent's swarm on the way out so the next launch can
+        // reconnect immediately (best-effort - done before the runtimes are disposed).
+        if (_peerCacheStore is not null)
+        {
+            Guid[] sessionIds;
+            lock (_runtimesLock)
+            {
+                sessionIds = _runtimes.Keys.ToArray();
+            }
+
+            foreach (var sessionId in sessionIds)
+                PersistConnectedPeers(sessionId);
+        }
 
         lock (_runtimesLock)
         {
@@ -630,6 +653,7 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
             var peerSource = _peerSourceFactory(session, _settings.ListenPort);
             var runtime = new TorrentRuntime(storage, peerSource);
             BuildPieceAndConnectionManagers(session, runtime);
+            SeedCachedPeers(session, runtime);
 
             _runtimes[session.Id] = runtime;
             return runtime;
@@ -691,6 +715,53 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
         runtime.PieceManager = pieceManager;
         runtime.ConnectionManager = connectionManager;
         runtime.PeerSource.PeerFound += connectionManager.AddPeerCandidate;
+
+        // Feed PEX-discovered peers back into the shared peer source, so the metadata fetcher
+        // (which pulls from the peer source) benefits from the swarm PEX uncovers - not just
+        // the peers tracker/DHT/LAN found. The old connection manager, if any, is disposed
+        // above, dropping its subscription with it; the peer source holds no reference back.
+        if (runtime.PeerSource is AggregatingPeerSource aggregatingPeerSource)
+            connectionManager.PeerDiscovered += aggregatingPeerSource.NotePeer;
+    }
+
+    /// <summary>
+    /// Re-seeds a freshly-built runtime with the peers this torrent was last connected to, so
+    /// it reconnects to a known-good swarm immediately rather than waiting on a fresh
+    /// tracker/DHT cycle. Fed through the peer source (deduped) so the connection manager picks
+    /// them up as candidates and the metadata fetcher sees them too. Must be called under
+    /// <see cref="_runtimesLock"/> (right after the peer source/connection manager are built).
+    /// </summary>
+    private void SeedCachedPeers(TorrentSession session, TorrentRuntime runtime)
+    {
+        if (_peerCacheStore is null || runtime.PeerSource is not AggregatingPeerSource aggregatingPeerSource)
+            return;
+
+        foreach (var peer in _peerCacheStore.Load(session.Metadata.HashString))
+            aggregatingPeerSource.NotePeer(peer);
+    }
+
+    /// <summary>Snapshots a torrent's currently-connected peers to the cache. Skips an empty set so stopping a torrent before it connects doesn't wipe a still-useful cache from a prior run.</summary>
+    private void PersistConnectedPeers(Guid sessionId)
+    {
+        if (_peerCacheStore is null)
+            return;
+
+        IPeerConnectionManager? connectionManager;
+        lock (_runtimesLock)
+        {
+            connectionManager = _runtimes.TryGetValue(sessionId, out var runtime) ? runtime.ConnectionManager : null;
+        }
+
+        if (connectionManager is null)
+            return;
+
+        var session = _inner.Sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session is null)
+            return;
+
+        var peers = connectionManager.ConnectedPeers.Select(p => p.EndPoint).ToList();
+        if (peers.Count > 0)
+            _peerCacheStore.Save(session.Metadata.HashString, peers);
     }
 
     private void TearDownRuntime(Guid sessionId)

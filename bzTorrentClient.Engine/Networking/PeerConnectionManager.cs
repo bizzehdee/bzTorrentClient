@@ -81,6 +81,8 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         _ipBlocklist = ipBlocklist ?? NullIpBlocklistProvider.Instance;
     }
 
+    public event Action<IPEndPoint>? PeerDiscovered;
+
     public int ActiveConnectionCount => _activeClients.Count;
 
     public IReadOnlyCollection<PeerConnectionInfo> ConnectedPeers => _activeEndpoints
@@ -420,6 +422,9 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
             {
                 Interlocked.Increment(ref _pexPeersFound);
                 AddPeerCandidate(pexEndpoint);
+                // Also surface it to the owner so it reaches the shared peer source (and thus
+                // the metadata fetcher), not just this manager's own candidate queue.
+                PeerDiscovered?.Invoke(pexEndpoint);
             };
 
             var extendedProtocol = new ExtendedProtocolExtensions();

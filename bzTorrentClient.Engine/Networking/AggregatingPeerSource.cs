@@ -165,6 +165,14 @@ public sealed class AggregatingPeerSource : IPeerSource
 
     public void Dispose() => Stop();
 
+    /// <summary>
+    /// Surfaces a peer discovered elsewhere (e.g. via PEX on a live connection) through this
+    /// source's <see cref="PeerFound"/> event, deduped the same as tracker/DHT/LAN peers, so
+    /// every consumer - including the metadata fetcher - gets the benefit of PEX, not just the
+    /// connection manager that happened to learn about it.
+    /// </summary>
+    public void NotePeer(IPEndPoint endpoint) => OnPeerFound(endpoint);
+
     private void OnDhtPeerFound(IPEndPoint endpoint)
     {
         Interlocked.Increment(ref _dhtPeersFound);

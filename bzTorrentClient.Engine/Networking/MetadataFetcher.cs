@@ -22,7 +22,12 @@ public static class MetadataFetcher
     // time - metadata fetch attempts are cheap (one handshake + a few small extension
     // messages each), so erring toward "try lots of peers" costs little.
     private const int WorkerCount = 10;
-    private const int PerPeerTimeoutSeconds = 15;
+
+    // Kept short so a slow or unresponsive peer doesn't tie a worker up: a peer that has the
+    // metadata hands over its small info dictionary within a couple of round-trips, so most of
+    // a long timeout would just be spent waiting on peers that were never going to answer.
+    // Lower = the worker pool churns through far more candidates per unit time.
+    private const int PerPeerTimeoutSeconds = 6;
 
     public static async Task<bool> TryFetchAsync(
         Metadata metadata,

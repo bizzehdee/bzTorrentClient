@@ -23,8 +23,13 @@ internal sealed class FakePeerConnectionManager : IPeerConnectionManager
     public long BytesDownloaded { get; set; }
     public long BytesUploaded { get; set; }
 
+    public event Action<IPEndPoint>? PeerDiscovered;
+
     public void AddPeerCandidate(IPEndPoint endpoint) => Candidates.Add(endpoint);
     public void AcceptInbound(IPeerWireClient client, IPEndPoint remoteEndpoint) => InboundPeers.Add(remoteEndpoint);
+
+    /// <summary>Test helper: simulate a PEX discovery so subscribers (e.g. the peer-source feedback wiring) can be exercised.</summary>
+    public void RaisePeerDiscovered(IPEndPoint endpoint) => PeerDiscovered?.Invoke(endpoint);
     public void Start() => Started = true;
     public void Pause() => Paused = true;
     public void Stop() => Stopped = true;
