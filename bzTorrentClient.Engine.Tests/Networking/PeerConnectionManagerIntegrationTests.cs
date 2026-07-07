@@ -33,7 +33,7 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
             Directory.Delete(_leecherDir, recursive: true);
     }
 
-    [Fact]
+    [Fact(Timeout = 60000)]
     public async Task PeerConnectionManager_DownloadsSinglePieceFromSeeder()
     {
         var pieceData = Enumerable.Range(0, 32).Select(i => (byte)i).ToArray();
@@ -83,7 +83,7 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
         Assert.Equal(pieceData, downloaded);
     }
 
-    [Fact]
+    [Fact(Timeout = 60000)]
     public async Task PeerConnectionManager_BlocklistedIp_NeverConnects()
     {
         var pieceData = Enumerable.Range(0, 32).Select(i => (byte)i).ToArray();
@@ -133,7 +133,7 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
         Assert.Empty(connectionManager.ConnectedPeers);
     }
 
-    [Fact]
+    [Fact(Timeout = 60000)]
     public async Task PeerConnectionManager_RequireEncryption_NeverDownloadsFromAPlaintextOnlySeeder()
     {
         // Proves the encryption mode setting actually reaches the wire: the same plaintext-only
@@ -180,7 +180,7 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
         Assert.False(completed, "A RequireEncryption connection manager must not fall back to plaintext.");
     }
 
-    [Fact]
+    [Fact(Timeout = 60000)]
     public async Task PeerConnectionManager_DownloadLimiter_PacesRequests()
     {
         // Real end-to-end proof the download rate limiter actually slows a transfer down,
@@ -236,7 +236,7 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
         Assert.True(elapsed >= TimeSpan.FromSeconds(1), $"Expected the rate limit to slow the download down; only took {elapsed.TotalMilliseconds}ms.");
     }
 
-    [Fact]
+    [Fact(Timeout = 60000)]
     public async Task PeerConnectionManager_HandshakeNotYetComplete_PeerIsNotInConnectedPeers()
     {
         // Regression test: a peer used to appear in ConnectedPeers (and therefore the UI's
@@ -289,7 +289,7 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
         Assert.True(appeared, "Expected the peer to appear in ConnectedPeers once the handshake actually completed.");
     }
 
-    [Fact]
+    [Fact(Timeout = 60000)]
     public async Task PeerConnectionManager_PeerDisconnectsThenReAdded_IsAllowedToReconnect()
     {
         var metadata = new FakeMetadata(

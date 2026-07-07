@@ -38,7 +38,7 @@ public class InboundPeerListenerIntegrationTests : IDisposable
         }
     }
 
-    [Fact]
+    [Fact(Timeout = 60000)]
     public async Task InboundPeer_IsRoutedToMatchingTorrent_AndTransfersData()
     {
         var pieceData = Enumerable.Range(0, 32).Select(i => (byte)i).ToArray();
@@ -97,7 +97,7 @@ public class InboundPeerListenerIntegrationTests : IDisposable
         Assert.Equal(pieceData, await File.ReadAllBytesAsync(Path.Combine(_leecherDir, "payload.bin")));
     }
 
-    [Fact]
+    [Fact(Timeout = 60000)]
     public async Task InboundPeer_ForUnknownTorrent_IsRejected()
     {
         // The listener has no torrent for the hash the peer asks for, so the connection must be
