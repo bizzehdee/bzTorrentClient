@@ -37,6 +37,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
     private readonly IRateLimiter _downloadLimiter;
     private readonly IRateLimiter _uploadLimiter;
     private readonly bool _enablePex;
+    private readonly PeerEncryptionMode _encryptionMode;
 
     private readonly ConcurrentQueue<IPEndPoint> _candidates = new();
     private readonly HashSet<string> _knownPeers = new();
@@ -61,7 +62,8 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         Action<int> releaseConnections,
         IRateLimiter? downloadLimiter = null,
         IRateLimiter? uploadLimiter = null,
-        bool enablePex = true)
+        bool enablePex = true,
+        PeerEncryptionMode encryptionMode = PeerEncryptionMode.PreferEncryption)
     {
         _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
@@ -73,6 +75,7 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         _downloadLimiter = downloadLimiter ?? new TokenBucketRateLimiter(() => 0);
         _uploadLimiter = uploadLimiter ?? new TokenBucketRateLimiter(() => 0);
         _enablePex = enablePex;
+        _encryptionMode = encryptionMode;
     }
 
     public int ActiveConnectionCount => _activeClients.Count;
@@ -195,9 +198,10 @@ public sealed class PeerConnectionManager : IPeerConnectionManager
         // connections (many ISPs throttle/block plaintext BitTorrent traffic) — PlainText
         // here meant every such peer's handshake silently went nowhere: peers were found
         // (tracker/DHT/PEX all work independently of this), but nothing ever downloaded.
-        // PreferEncryption negotiates MSE when the peer supports it and falls back to
-        // plaintext when it doesn't, same default most mature clients use.
-        var connection = new PeerWireConnection<TSocket> { Timeout = 30, EncryptionMode = PeerEncryptionMode.PreferEncryption };
+        // PreferEncryption (the default) negotiates MSE when the peer supports it and falls
+        // back to plaintext when it doesn't, same default most mature clients use; the
+        // encryption mode setting lets the user require it or disable it outright instead.
+        var connection = new PeerWireConnection<TSocket> { Timeout = 30, EncryptionMode = _encryptionMode };
         var client = new PeerWireClient(connection) { KeepConnectionAlive = true };
         _activeClients[peerId] = client;
 

@@ -632,7 +632,8 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
             ReleaseConnections,
             _downloadLimiter,
             _uploadLimiter,
-            enablePex: _settings.EnablePex);
+            enablePex: _settings.EnablePex,
+            encryptionMode: _settings.EncryptionMode);
 
     private sealed class TorrentRuntime : IDisposable
     {

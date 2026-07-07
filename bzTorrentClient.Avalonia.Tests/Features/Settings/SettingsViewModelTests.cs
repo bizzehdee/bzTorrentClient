@@ -1,3 +1,4 @@
+using bzTorrent.IO;
 using bzTorrentClient.Avalonia.Features.Settings;
 using bzTorrentClient.Engine.Settings;
 
@@ -168,5 +169,29 @@ public class SettingsViewModelTests
         Assert.False(settings.EnableDht);
         Assert.False(settings.EnablePex);
         Assert.False(settings.EnableLpd);
+    }
+
+    [Fact]
+    public void Constructor_DefaultsEncryptionModeFromSettings()
+    {
+        var settings = new ClientSettings("/downloads") { EncryptionMode = PeerEncryptionMode.RequireEncryption };
+        var viewModel = new SettingsViewModel(settings, new FakeClientSettingsStore());
+
+        Assert.Equal(PeerEncryptionMode.RequireEncryption, viewModel.EncryptionMode);
+    }
+
+    [Fact]
+    public void Save_EncryptionMode_PersistsToSettings()
+    {
+        var settings = new ClientSettings("/downloads");
+        var viewModel = new SettingsViewModel(settings, new FakeClientSettingsStore())
+        {
+            EncryptionMode = PeerEncryptionMode.PlainText,
+        };
+
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.Equal(PeerEncryptionMode.PlainText, settings.EncryptionMode);
     }
 }

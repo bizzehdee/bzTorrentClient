@@ -1,3 +1,5 @@
+using bzTorrent.IO;
+
 namespace bzTorrentClient.Engine.Settings;
 
 public sealed class ClientSettings : IClientSettings
@@ -17,6 +19,7 @@ public sealed class ClientSettings : IClientSettings
     public bool EnableDht { get; set; } = true;
     public bool EnablePex { get; set; } = true;
     public bool EnableLpd { get; set; } = true;
+    public PeerEncryptionMode EncryptionMode { get; set; } = PeerEncryptionMode.PreferEncryption;
 
     public ClientSettings(string? defaultDownloadDirectory = null)
     {

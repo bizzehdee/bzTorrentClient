@@ -1,3 +1,5 @@
+using bzTorrent.IO;
+
 namespace bzTorrentClient.Engine.Settings;
 
 public interface IClientSettings
@@ -50,4 +52,11 @@ public interface IClientSettings
 
     /// <summary>Whether to announce/discover peers on the local network via Local Peer Discovery (BEP-14). Ignored for private torrents. Default true.</summary>
     bool EnableLpd { get; set; }
+
+    /// <summary>
+    /// How outbound peer connections negotiate MSE/PE encryption: PlainText disables it,
+    /// PreferEncryption ("allow") negotiates it but falls back to plaintext, RequireEncryption
+    /// refuses any connection that won't encrypt. Default PreferEncryption.
+    /// </summary>
+    PeerEncryptionMode EncryptionMode { get; set; }
 }

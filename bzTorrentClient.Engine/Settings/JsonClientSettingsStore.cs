@@ -1,4 +1,5 @@
 using System.Text.Json;
+using bzTorrent.IO;
 
 namespace bzTorrentClient.Engine.Settings;
 
@@ -46,6 +47,7 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
                 EnableDht = dto.EnableDht ?? true,
                 EnablePex = dto.EnablePex ?? true,
                 EnableLpd = dto.EnableLpd ?? true,
+                EncryptionMode = Enum.TryParse<PeerEncryptionMode>(dto.EncryptionMode, out var encryptionMode) ? encryptionMode : PeerEncryptionMode.PreferEncryption,
             };
         }
         catch (JsonException)
@@ -75,6 +77,7 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
             EnableDht = settings.EnableDht,
             EnablePex = settings.EnablePex,
             EnableLpd = settings.EnableLpd,
+            EncryptionMode = settings.EncryptionMode.ToString(),
         };
 
         var directory = Path.GetDirectoryName(_filePath);
@@ -101,5 +104,6 @@ public sealed class JsonClientSettingsStore : IClientSettingsStore
         public bool? EnableDht { get; set; }
         public bool? EnablePex { get; set; }
         public bool? EnableLpd { get; set; }
+        public string? EncryptionMode { get; set; }
     }
 }

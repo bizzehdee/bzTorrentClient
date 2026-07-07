@@ -1,3 +1,4 @@
+using bzTorrent.IO;
 using bzTorrentClient.Engine.Settings;
 using Xunit;
 
@@ -42,6 +43,7 @@ public class JsonClientSettingsStoreTests : IDisposable
             EnableDht = false,
             EnablePex = false,
             EnableLpd = false,
+            EncryptionMode = PeerEncryptionMode.RequireEncryption,
         };
 
         store.Save(settings);
@@ -61,6 +63,16 @@ public class JsonClientSettingsStoreTests : IDisposable
         Assert.False(reloaded.EnableDht);
         Assert.False(reloaded.EnablePex);
         Assert.False(reloaded.EnableLpd);
+        Assert.Equal(PeerEncryptionMode.RequireEncryption, reloaded.EncryptionMode);
+    }
+
+    [Fact]
+    public void Load_MissingFile_DefaultsEncryptionModeToPreferEncryption()
+    {
+        var store = new JsonClientSettingsStore(_filePath);
+        var settings = store.Load();
+
+        Assert.Equal(PeerEncryptionMode.PreferEncryption, settings.EncryptionMode);
     }
 
     [Fact]

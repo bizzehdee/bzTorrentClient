@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using bzTorrent.Data;
+using bzTorrent.IO;
 using bzTorrentClient.Engine.Networking;
 using bzTorrentClient.Engine.Storage;
 using bzTorrentClient.Engine.Tests.Testing;
@@ -79,6 +80,53 @@ public class PeerConnectionManagerIntegrationTests : IDisposable
         Assert.True(completed, "Expected the single piece to be downloaded and verified within the timeout.");
         var downloaded = File.ReadAllBytes(Path.Combine(_leecherDir, "payload.bin"));
         Assert.Equal(pieceData, downloaded);
+    }
+
+    [Fact]
+    public async Task PeerConnectionManager_RequireEncryption_NeverDownloadsFromAPlaintextOnlySeeder()
+    {
+        // Proves the encryption mode setting actually reaches the wire: the same plaintext-only
+        // seeder that PeerConnectionManager_DownloadsSinglePieceFromSeeder downloads from
+        // successfully under the default (PreferEncryption) must never complete a download
+        // when the connection manager is configured to require encryption instead.
+        var pieceData = Enumerable.Range(0, 32).Select(i => (byte)i).ToArray();
+        var pieceHash = SHA1.HashData(pieceData);
+
+        var metadata = new FakeMetadata(
+            pieceCount: 1,
+            hashHex: InfoHashHex,
+            pieceSize: pieceData.Length,
+            pieceHashes: new[] { pieceHash },
+            files: new[] { new MetadataFileInfo { Id = 0, Filename = "payload.bin", FileStartByte = 0, FileSize = pieceData.Length } });
+
+        var tcpListener = new TcpListener(IPAddress.Loopback, 0);
+        tcpListener.Start();
+        var port = ((IPEndPoint)tcpListener.LocalEndpoint).Port;
+        _ = Task.Run(() => RunRawSeederAsync(tcpListener, pieceData));
+
+        var storage = new FileSystemTorrentStorage(metadata, _leecherDir);
+        storage.EnsureAllocated();
+        var pieceManager = new RarestFirstPieceManager(metadata, storage);
+
+        using var connectionManager = new PeerConnectionManager(
+            metadata,
+            storage,
+            pieceManager,
+            LeecherPeerId,
+            maxConnectionsPerTorrent: 5,
+            tryReserveConnections: _ => true,
+            releaseConnections: _ => { },
+            encryptionMode: PeerEncryptionMode.RequireEncryption);
+
+        connectionManager.Start();
+        connectionManager.AddPeerCandidate(new IPEndPoint(IPAddress.Loopback, port));
+
+        var completed = await SpinUntilAsync(() => pieceManager.IsComplete, TimeSpan.FromSeconds(3));
+
+        connectionManager.Stop();
+        tcpListener.Stop();
+
+        Assert.False(completed, "A RequireEncryption connection manager must not fall back to plaintext.");
     }
 
     [Fact]
