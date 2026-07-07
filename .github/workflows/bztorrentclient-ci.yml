@@ -2,7 +2,7 @@ name: bzTorrentClient CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
 
 jobs:
@@ -36,3 +36,43 @@ jobs:
 
       - name: Test Avalonia UI
         run: dotnet test bzTorrentClient.Avalonia.Tests/bzTorrentClient.Avalonia.Tests.csproj --configuration Release --no-build --verbosity normal
+
+  release:
+    name: Publish CI release
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish win-x64
+        run: dotnet publish bzTorrentClient.Avalonia/bzTorrentClient.Avalonia.csproj --configuration Release --runtime win-x64 --self-contained true --output publish/win-x64
+
+      - name: Publish linux-x64
+        run: dotnet publish bzTorrentClient.Avalonia/bzTorrentClient.Avalonia.csproj --configuration Release --runtime linux-x64 --self-contained true --output publish/linux-x64
+
+      - name: Zip release artifacts
+        run: |
+          (cd publish/win-x64 && zip -r ../../bzTorrentClient-win-x64.zip .)
+          (cd publish/linux-x64 && zip -r ../../bzTorrentClient-linux-x64.zip .)
+
+      - name: Publish CI release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ci-latest
+          name: CI
+          body: latest build
+          files: |
+            bzTorrentClient-win-x64.zip
+            bzTorrentClient-linux-x64.zip
