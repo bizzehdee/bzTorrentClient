@@ -5,7 +5,7 @@ using bzTorrentClient.Engine.Sessions;
 namespace bzTorrentClient.Avalonia.Tests.Testing;
 
 /// <summary>In-memory fake of <see cref="ISessionManager"/> for view-model tests — no persistence, no networking.</summary>
-internal sealed class FakeSessionManager : ISessionManager, ITorrentRuntimeInfoProvider
+internal class FakeSessionManager : ISessionManager, ITorrentRuntimeInfoProvider
 {
     private readonly List<TorrentSession> _sessions = new();
 

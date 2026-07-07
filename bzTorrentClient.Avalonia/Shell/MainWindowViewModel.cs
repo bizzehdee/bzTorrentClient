@@ -69,7 +69,16 @@ public partial class MainWindowViewModel : ViewModelBase
             // Called fire-and-forget from App.axaml.cs at startup — a failure loading
             // persisted sessions (corrupt DB row, a magnet source that no longer resolves,
             // ...) must not prevent the window from opening at all.
-            await _sessionManager.InitializeAsync();
+            //
+            // If the session manager supports it, only await the fast part here (a DB
+            // read) so the list shows immediately — the slower part (tracker-list refresh,
+            // per-torrent disk verification, auto-resuming) runs afterward and updates
+            // sessions in place, which the refresh timer below picks up as it lands.
+            // Otherwise fall back to the single all-in-one call.
+            if (_sessionManager is ITwoPhaseSessionInitializer twoPhase)
+                await twoPhase.LoadAsync();
+            else
+                await _sessionManager.InitializeAsync();
         }
         catch (Exception ex)
         {
@@ -78,5 +87,17 @@ public partial class MainWindowViewModel : ViewModelBase
 
         TorrentList.Refresh();
         _refreshTimer.Start();
+
+        if (_sessionManager is ITwoPhaseSessionInitializer resumable)
+        {
+            try
+            {
+                await resumable.ResumeAsync();
+            }
+            catch (Exception ex)
+            {
+                TorrentList.LastErrorMessage = $"Failed to resume saved torrents: {ex.Message}";
+            }
+        }
     }
 }

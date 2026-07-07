@@ -14,7 +14,7 @@ namespace bzTorrentClient.Engine.Sessions;
 /// running behind the scenes for candidates (soft halt); stopping tears both down
 /// entirely (hard halt). See PLAN.md for the Paused-vs-Stopped rationale.
 /// </summary>
-public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeInfoProvider, IDisposable
+public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeInfoProvider, ITwoPhaseSessionInitializer, IDisposable
 {
     private static readonly TimeSpan DefaultMetadataFetchTimeout = TimeSpan.FromSeconds(90);
 
@@ -78,14 +78,29 @@ public sealed class NetworkedSessionManager : ISessionManager, ITorrentRuntimeIn
     public int GlobalConnectionBudget => _inner.GlobalConnectionBudget;
     public int ReservedConnections => _inner.ReservedConnections;
 
+    /// <summary>Full readiness in one call - equivalent to <see cref="LoadAsync"/> followed by <see cref="ResumeAsync"/>.</summary>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        await LoadAsync(cancellationToken);
+        await ResumeAsync(cancellationToken);
+    }
+
+    /// <summary>Just loads persisted sessions into memory - a DB read, no network calls or disk hashing. Fast enough to await before showing a UI.</summary>
+    public Task LoadAsync(CancellationToken cancellationToken = default) => _inner.InitializeAsync(cancellationToken);
+
+    /// <summary>
+    /// The slow part of startup: refreshes the default tracker list, verifies every
+    /// loaded session's on-disk data against its piece hashes, and auto-resumes torrents
+    /// that were Active/Completed when the app last closed. Safe to run after a UI has
+    /// already shown whatever <see cref="LoadAsync"/> loaded - sessions are mutated in
+    /// place, so a periodic refresh picks up the corrected state as it lands.
+    /// </summary>
+    public async Task ResumeAsync(CancellationToken cancellationToken = default)
     {
         // Best-effort - refreshed before any torrent's runtime is built below, so the
         // upserted list is as current as this launch can make it, but a slow/failed fetch
         // must not stop the rest of startup (RefreshAsync swallows its own failures).
         await _defaultTrackerListProvider.RefreshAsync(cancellationToken);
-
-        await _inner.InitializeAsync(cancellationToken);
 
         var sessions = _inner.Sessions.ToList();
 
